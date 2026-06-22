@@ -139,12 +139,32 @@ known issue with GCC 12 and this file. Build succeeds regardless. ✓
 
 ## Step 5 — Verify pyrealsense2
 
-*(to be completed)*
-
 ```bash
+cd ~/rpi5-realsense
 source ~/realsense-env/bin/activate
+python -c "import pyrealsense2; print(pyrealsense2.__version__)"
 python setup/verify.py
 ```
+
+Output:
+```
+2.58.2
+Found 1 device(s):
+  Name:     Intel RealSense D435I
+  Serial:   233522078548
+  Firmware: 5.17.0.10
+
+Testing pipeline (5 frames)...
+  Frame 1: OK
+  Frame 2: OK
+  Frame 3: OK
+  Frame 4: OK
+  Frame 5: OK
+
+RealSense OK
+```
+
+✓
 
 ---
 
