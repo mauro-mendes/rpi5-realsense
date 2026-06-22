@@ -170,12 +170,64 @@ RealSense OK
 
 ## Step 6 — Run green ball example
 
-*(to be completed)*
+### OpenCV display troubleshooting
+
+**Problem A**: `opencv-python` (pip) uses Qt — window fails on Debian Bookworm Wayland:
+```
+qt.qpa.plugin: Could not find the Qt platform plugin "wayland"
+QFontDatabase: Cannot find font directory .../cv2/qt/fonts
+```
+
+**Fix**: Use system OpenCV (GTK-based) instead of pip opencv-python:
+```bash
+sudo apt-get install -y python3-opencv
+pip uninstall opencv-python -y
+echo "/usr/lib/python3/dist-packages" \
+    > ~/realsense-env/lib/python3.11/site-packages/system.pth
+```
+
+**Problem B**: NumPy version conflict — system OpenCV 4.6.0 compiled with NumPy 1.x,
+venv had NumPy 2.4.6:
+```
+A module that was compiled using NumPy 1.x cannot be run in NumPy 2.4.6
+```
+
+**Fix**: Downgrade NumPy in the venv:
+```bash
+pip install "numpy<2"
+```
+
+Note: pyrealsense2 uses pybind11 2.13.6 which supports both NumPy 1.x and 2.x — no issue.
+
+**Warning** `libpng warning: iCCP: known incorrect sRGB profile` is cosmetic, harmless.
+
+### Running the example
 
 ```bash
+cd ~/rpi5-realsense
 source ~/realsense-env/bin/activate
 python examples/green_ball.py
 ```
+
+Output:
+```
+Depth scale: 0.001000 m/unit  |  Press 'q' to quit
+  Ball (611,324)  depth=1.98 m
+Stopped.
+```
+
+Side-by-side window: RGB with bounding circle + distance label | depth colormap.
+Press `q` to quit cleanly. ✓
+
+### Final working stack
+
+| Component | Version | Source |
+|-----------|---------|--------|
+| Python | 3.11.2 | system |
+| pyrealsense2 | 2.58.2 | built from source (librealsense) |
+| opencv | 4.6.0 | system apt (`python3-opencv`, GTK) |
+| numpy | 1.26.4 | pip (downgraded for opencv compat) |
+| pybind11 | 2.13.6 | fetched by cmake during build |
 
 ---
 
