@@ -13,8 +13,15 @@
 
 - D435i detected on Bus 004 (USB 3.0 blue port): `ID 8086:0b3a Intel Corp. Intel(R) RealSense(TM) Depth Camera 435i`
 - udev rules installed: `/etc/udev/rules.d/99-realsense-libusb.rules`
-- pyrealsense2 installed in venv `~/realsense-env` via `pip install pyrealsense2`
+- pyrealsense2: **no ARM64 wheel on PyPI** — must build from source
+- Built librealsense from source with `-DBUILD_PYTHON_BINDINGS=ON -DPYTHON_EXECUTABLE=~/realsense-env/bin/python3`
 - Python 3.11.2, pip 23.0.1
+
+### pyrealsense2 ARM64 build notes
+
+`pip install pyrealsense2` fails on Debian Bookworm aarch64 — Intel publishes no ARM64 wheel.
+Solution: build librealsense from source pointing cmake to the venv Python.
+The Python bindings (`.so`) install to the venv's `site-packages` automatically.
 
 ## Troubleshooting
 
