@@ -118,10 +118,22 @@ sudo make install
 sudo ldconfig
 ```
 
-Build time on RPi5 (4 cores): ~30–40 min  
-Started: 2026-06-22 ~19:20
+Build time on RPi5 (4 cores, 8GB RAM): ~40 min  
+Started: 2026-06-22 ~19:20 — completed ~20:00
 
-*(section to be updated when build completes)*
+Build output (relevant lines):
+```
+[100%] Linking CXX shared library ../../Release/pyrealsense2.cpython-311-aarch64-linux-gnu.so
+[100%] Built target pyrealsense2
+-- Installing: /home/user/realsense-env/lib/python3.11/site-packages/pyrealsense2/pyrealsense2.cpython-311-aarch64-linux-gnu.so
+-- Installing: /home/user/realsense-env/lib/python3.11/site-packages/pyrealsense2/__init__.py
+```
+
+The Python bindings install directly to the venv's site-packages because
+`-DPYTHON_EXECUTABLE=$HOME/realsense-env/bin/python3` was specified in cmake.
+
+Compiler warnings (`-Wstringop-overflow=`) from `hdr-config.cpp` are cosmetic —
+known issue with GCC 12 and this file. Build succeeds regardless. ✓
 
 ---
 
