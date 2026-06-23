@@ -219,6 +219,17 @@ Stopped.
 Side-by-side window: RGB with bounding circle + distance label | depth colormap.
 Press `q` to quit cleanly. ✓
 
+### Known issue: filter breaks get_distance()
+
+After applying `spatial.process()` or `temporal.process()`, the returned object
+is a generic `frame` — `get_distance()` is not available on it.
+
+Fix: cast back to `depth_frame` explicitly:
+```python
+depth_frame = spatial.process(depth_frame).as_depth_frame()
+depth_frame = temporal.process(depth_frame).as_depth_frame()
+```
+
 ### Final working stack
 
 | Component | Version | Source |
