@@ -34,9 +34,9 @@ try:
         if not color_frame or not depth_frame:
             continue
 
-        # Apply filters to reduce noise
-        depth_frame = spatial.process(depth_frame)
-        depth_frame = temporal.process(depth_frame)
+        # Apply filters — cast back to depth_frame to keep get_distance()
+        depth_frame = spatial.process(depth_frame).as_depth_frame()
+        depth_frame = temporal.process(depth_frame).as_depth_frame()
 
         color = np.asanyarray(color_frame.get_data())
         depth = np.asanyarray(depth_frame.get_data())
