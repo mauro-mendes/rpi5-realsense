@@ -5,7 +5,7 @@ Launch once per session. Run multiple trials back-to-back without restarting.
 
 Usage:
     python examples/corridor_tracker.py --corridor reto --conditions bengala colete
-    python examples/corridor_tracker.py --corridor S_esq_dir --conditions bengala colete vest
+    python examples/corridor_tracker.py --corridor reto --conditions bengala colete --record
 
 Keys:
     1, 2, 3...  select condition (shown on screen)
@@ -14,7 +14,8 @@ Keys:
 
 Output files:
     data/<corridor>_<condition>_001.csv
-    data/<corridor>_<condition>_002.csv   (increments if same condition repeated)
+    data/<corridor>_<condition>_001.mp4   (only with --record)
+    data/<corridor>_<condition>_002.csv
     ...
 """
 import argparse
@@ -36,6 +37,8 @@ parser.add_argument("--corridor", required=True,
 parser.add_argument("--conditions", nargs="+", default=["trial"],
                     help="Condition names, e.g. bengala colete vest")
 parser.add_argument("--config", default="config/corridors.yaml")
+parser.add_argument("--record", action="store_true",
+                    help="Save camera video alongside CSV (MP4)")
 args = parser.parse_args()
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -100,6 +103,7 @@ pos_history      = deque(maxlen=10)
 pos_x = pos_y    = None
 speed_mps        = 0.0
 trail            = []          # [(x, y)] for top-view
+video_writer     = None        # cv2.VideoWriter, only when --record
 
 print(f"\nCorridor : {args.corridor}")
 print(f"Conditions: {conditions}")
@@ -135,6 +139,7 @@ def estimate_position(corners, ids, frame):
     return best_pos
 
 def save_trial(condition):
+    global video_writer
     if not rows:
         print("  (no data, not saved)")
         return
@@ -145,9 +150,13 @@ def save_trial(condition):
         w.writeheader()
         for r in rows:
             w.writerow({**r, "t": round(r["t"] - t0, 4)})
+    if video_writer is not None:
+        video_writer.release()
+        video_writer = None
+        print(f"  Video: {path.with_suffix('.mp4').name}")
     duration = rows[-1]["t"] - rows[0]["t"]
     saved_trials.append((condition, path, len(rows), duration))
-    print(f"  Saved: {path.name}  ({len(rows)} frames, {duration:.1f}s)")
+    print(f"  CSV:   {path.name}  ({len(rows)} frames, {duration:.1f}s)")
 
 def draw_topview():
     scale = 80
@@ -262,7 +271,10 @@ try:
                              "yaw_deg": round(yaw_deg, 2),
                              "speed_mps": round(speed_mps, 4)})
 
-        cv2.imshow("Camera", draw_hud(color))
+        hud_frame = draw_hud(color)
+        if recording and video_writer is not None:
+            video_writer.write(hud_frame)
+        cv2.imshow("Camera", hud_frame)
         cv2.imshow("Top view", draw_topview())
 
         key = cv2.waitKey(1) & 0xFF
@@ -289,16 +301,24 @@ try:
                 pos_history.clear()
                 recording = True
                 cond = conditions[cond_idx]
-                print(f"\nRecording: {cond} …  (SPACE to stop)")
+                if args.record:
+                    vid_path = next_csv_path(args.corridor, cond).with_suffix(".mp4")
+                    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                    video_writer = cv2.VideoWriter(
+                        str(vid_path), fourcc, 30, (848, 480 + 36))
+                print(f"\nRecording: {cond} …  (SPACE to stop)"
+                      + ("  [video ON]" if args.record else ""))
             else:
                 # Stop
                 recording = False
                 cond = conditions[cond_idx]
-                print(f"Stopped.")
+                print("Stopped.")
                 save_trial(cond)
-                print(f"Ready. Select condition (keys) then SPACE to record again.")
+                print("Ready. Select condition (keys) then SPACE to record again.")
 
 finally:
+    if video_writer is not None:
+        video_writer.release()
     pipeline.stop()
     cv2.destroyAllWindows()
 
