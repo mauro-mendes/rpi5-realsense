@@ -242,10 +242,23 @@ depth_frame = spatial.process(depth_frame).as_depth_frame()
 depth_frame = temporal.process(depth_frame).as_depth_frame()
 ```
 
+### Calibrated HSV presets (measured on RPi5, June 2026)
+
+| Preset | Key | H mean | S mean | V mean | Range lower | Range upper |
+|--------|-----|--------|--------|--------|-------------|-------------|
+| verde musgo | `1` | 82 | 92 | 29 | [62, 10, 0] | [102, 210, 130] |
+| verde folha | `2` | 61 | 141 | 58 | [41, 35, 0] | [86, 255, 180] |
+
+**Distance test results** (indoor, low light):
+- verde folha: tracked reliably up to **3m+**, object became very small but mask remained solid white
+- verde musgo: harder to track at distance — darker color (V=29) loses contrast faster under poor lighting
+
+**Recommendation**: use verde folha or brighter objects for longer-range demos.
+For verde musgo, better room lighting significantly improves range.
+
 ### Color tuning tips
 
-The default HSV range targets verde folha (leaf green).
-For other colors, just click on the object.
+For other colors, click on the object in the RGB window.
 
 If the mask is noisy (detecting too much):
 - Click again on a better-lit area of the object
@@ -253,7 +266,7 @@ If the mask is noisy (detecting too much):
 
 If the mask is empty (detecting nothing):
 - The object may be too dark or too saturated for the tolerance window
-- Increase `tol` values in `on_mouse_click()` (default: `[15, 60, 60]`)
+- Increase `tol` values in `on_mouse_click()` (default: `[15, 80, 80]`)
 
 ### Final working stack
 
