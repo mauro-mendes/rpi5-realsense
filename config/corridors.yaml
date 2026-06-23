@@ -1,0 +1,134 @@
+# Corridor definitions for ArUco-based localization
+#
+# Coordinate system (per corridor):
+#   Origin = start position (where user begins)
+#   +x = right
+#   +y = forward (direction user walks first)
+#   All values in meters
+#
+# marker_size_m: physical side length of printed marker (190mm = 0.19m)
+# Each marker: id, position (x,y) in corridor coords, facing direction
+#   facing: direction the marker FACES (i.e. toward approaching user)
+#   N=north(+y), S=south(-y), E=east(+x), W=west(-x)
+
+marker_size_m: 0.19
+
+corridors:
+
+  reto:
+    description: "Corredor reto"
+    # Layout (top view, user walks from bottom to top):
+    #
+    #   |  [ID 1]  |   <- end wall, marker faces S
+    #   |          |
+    #   |          |
+    #   |  [ID 0]  |   <- start wall, marker faces N
+    #
+    width_m: 1.0       # fill in actual corridor width
+    length_m: 4.0      # fill in actual corridor length
+    walls:
+      # Each wall segment: from (x1,y1) to (x2,y2)
+      - [[-0.5, 0.0], [-0.5, 4.0]]   # left wall
+      - [[ 0.5, 0.0], [ 0.5, 4.0]]   # right wall
+    start: [0.0, 0.3]
+    goal:  [0.0, 3.7]
+    markers:
+      - id: 0
+        x: 0.0
+        y: 0.0
+        facing: N
+        note: "start wall"
+      - id: 1
+        x: 0.0
+        y: 4.0
+        facing: S
+        note: "end wall"
+
+  S_esq_dir:
+    description: "Corredor S: curva esquerda depois direita"
+    # Layout (top view):
+    #
+    #   | [13] |
+    #   |      |___
+    #   | [12]  [11]|
+    #          |    |
+    #          |[10]|  <- start
+    #
+    # Segment 1: y=0..seg1_len, going north
+    # Turn left at y=seg1_len (user now going west)
+    # Segment 2: x=0..-seg2_len
+    # Turn right at x=-seg2_len (user now going north again)
+    # Segment 3: y=seg1_len..seg1_len+seg3_len
+    #
+    corridor_width_m: 1.0
+    seg1_len_m: 2.0    # fill in
+    seg2_len_m: 2.0    # fill in
+    seg3_len_m: 2.0    # fill in
+    walls: []          # fill in after measuring
+    start: [0.0, 0.3]
+    goal:  [-2.0, 4.3]  # example, update after measuring
+    markers:
+      - id: 10
+        x: 0.0
+        y: 0.0
+        facing: N
+        note: "start wall"
+      - id: 11
+        x: 0.0
+        y: 2.0
+        facing: N
+        note: "first corner, right wall"
+      - id: 12
+        x: -2.0
+        y: 2.0
+        facing: E
+        note: "first corner, left wall after turn"
+      - id: 13
+        x: -2.0
+        y: 4.0
+        facing: S
+        note: "end wall"
+
+  U_esq:
+    description: "Corredor U: 2 curvas para esquerda"
+    # Layout (top view):
+    #
+    #   |[23]|[20]|
+    #   |    |    |
+    #   |[22]|    |
+    #   |____|    |
+    #        |[21]|  <- after first turn
+    #        | start
+    #
+    # Segment 1: going north
+    # Turn left → Segment 2: going west
+    # Turn left → Segment 3: going south (parallel to seg 1)
+    #
+    corridor_width_m: 1.0
+    seg1_len_m: 3.0    # fill in
+    seg2_len_m: 2.0    # fill in (connects the two parallel legs)
+    seg3_len_m: 3.0    # fill in
+    walls: []          # fill in after measuring
+    start: [0.0, 0.3]
+    goal:  [-2.0, 0.3]  # example, update after measuring
+    markers:
+      - id: 20
+        x: 0.0
+        y: 3.0
+        facing: S
+        note: "end of first leg / top right"
+      - id: 21
+        x: -1.0
+        y: 3.0
+        facing: W
+        note: "first corner inner wall"
+      - id: 22
+        x: -2.0
+        y: 3.0
+        facing: S
+        note: "second corner"
+      - id: 23
+        x: -2.0
+        y: 0.0
+        facing: N
+        note: "end wall (goal)"
