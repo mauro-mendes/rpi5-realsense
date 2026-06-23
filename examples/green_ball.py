@@ -56,7 +56,8 @@ try:
         depth_viz = cv2.applyColorMap(
             cv2.convertScaleAbs(depth, alpha=0.03), cv2.COLORMAP_JET
         )
-        cv2.imshow("RealSense D435i — Green Ball", np.hstack([color, depth_viz]))
+        cv2.imshow("RGB", color)
+        cv2.imshow("Depth", depth_viz)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 finally:
