@@ -26,6 +26,15 @@ print(f"Depth scale: {depth_scale:.6f} m/unit  |  Press 'q' to quit")
 temporal = rs.temporal_filter()
 spatial  = rs.spatial_filter()
 
+# HSV tuning window with trackbars
+cv2.namedWindow("HSV Tuning")
+cv2.createTrackbar("H min", "HSV Tuning", 25,  179, lambda x: None)
+cv2.createTrackbar("H max", "HSV Tuning", 85,  179, lambda x: None)
+cv2.createTrackbar("S min", "HSV Tuning", 30,  255, lambda x: None)
+cv2.createTrackbar("S max", "HSV Tuning", 255, 255, lambda x: None)
+cv2.createTrackbar("V min", "HSV Tuning", 30,  255, lambda x: None)
+cv2.createTrackbar("V max", "HSV Tuning", 255, 255, lambda x: None)
+
 try:
     while True:
         frames = align.process(pipeline.wait_for_frames())
@@ -41,9 +50,19 @@ try:
         color = np.asanyarray(color_frame.get_data())
         depth = np.asanyarray(depth_frame.get_data())
 
+        # Read HSV range from trackbars
+        h_min = cv2.getTrackbarPos("H min", "HSV Tuning")
+        h_max = cv2.getTrackbarPos("H max", "HSV Tuning")
+        s_min = cv2.getTrackbarPos("S min", "HSV Tuning")
+        s_max = cv2.getTrackbarPos("S max", "HSV Tuning")
+        v_min = cv2.getTrackbarPos("V min", "HSV Tuning")
+        v_max = cv2.getTrackbarPos("V max", "HSV Tuning")
+
         # Green detection in HSV
         hsv = cv2.cvtColor(color, cv2.COLOR_BGR2HSV)
-        mask = cv2.inRange(hsv, np.array([40, 60, 60]), np.array([80, 255, 255]))
+        mask = cv2.inRange(hsv,
+                           np.array([h_min, s_min, v_min]),
+                           np.array([h_max, s_max, v_max]))
         mask = cv2.erode(mask, None, iterations=2)
         mask = cv2.dilate(mask, None, iterations=2)
 
@@ -68,6 +87,7 @@ try:
         depth_viz = cv2.applyColorMap(depth_8bit, cv2.COLORMAP_JET)
         cv2.imshow("RGB", color)
         cv2.imshow("Depth", depth_viz)
+        cv2.imshow("Mask", mask)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 finally:
