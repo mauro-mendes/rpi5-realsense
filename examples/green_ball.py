@@ -1,8 +1,8 @@
 """
-Green ball tracker with real-time depth — RealSense D435i on RPi5.
+Color object tracker with real-time depth — RealSense D435i on RPi5.
 
-Tracks the largest green object in the RGB frame and reads its
-distance from the aligned depth stream.
+Click on any object in the RGB window to track it by color.
+The HSV range is auto-detected from a 20x20 pixel sample around the click.
 
 Usage:
     source ~/realsense-env/bin/activate
@@ -12,6 +12,35 @@ import numpy as np
 import cv2
 import pyrealsense2 as rs
 
+# --- HSV range (updated on mouse click) ---
+hsv_lower = np.array([25, 30, 30])
+hsv_upper = np.array([85, 255, 255])
+tracking_color = "green (default)"
+
+def on_mouse_click(event, x, y, flags, param):
+    global hsv_lower, hsv_upper, tracking_color
+    if event != cv2.EVENT_LBUTTONDOWN:
+        return
+    frame = param["frame"]
+    if frame is None:
+        return
+    h, w = frame.shape[:2]
+    # Sample 20x20 region around click
+    r = 10
+    x1, x2 = max(0, x - r), min(w, x + r)
+    y1, y2 = max(0, y - r), min(h, y + r)
+    roi = frame[y1:y2, x1:x2]
+    hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    mean = hsv_roi.mean(axis=(0, 1))
+    std  = hsv_roi.std(axis=(0, 1))
+    tol = np.array([15, 60, 60])
+    hsv_lower = np.clip(mean - tol, 0, [179, 255, 255]).astype(np.uint8)
+    hsv_upper = np.clip(mean + tol, 0, [179, 255, 255]).astype(np.uint8)
+    tracking_color = f"H={mean[0]:.0f} S={mean[1]:.0f} V={mean[2]:.0f}"
+    print(f"\nClicked ({x},{y}) — HSV mean: {tracking_color}")
+    print(f"  Range: lower={hsv_lower}  upper={hsv_upper}")
+
+# --- Pipeline ---
 pipeline = rs.pipeline()
 cfg = rs.config()
 cfg.enable_stream(rs.stream.color, 848, 480, rs.format.bgr8, 30)
@@ -20,20 +49,16 @@ align = rs.align(rs.stream.color)
 
 profile = pipeline.start(cfg)
 depth_scale = profile.get_device().first_depth_sensor().get_depth_scale()
-print(f"Depth scale: {depth_scale:.6f} m/unit  |  Press 'q' to quit")
+print(f"Depth scale: {depth_scale:.6f} m/unit")
+print("Click on any object in the RGB window to track it.")
+print("Press 'q' to quit.")
 
-# Filters to reduce depth noise
 temporal = rs.temporal_filter()
 spatial  = rs.spatial_filter()
 
-# HSV tuning window with trackbars
-cv2.namedWindow("HSV Tuning")
-cv2.createTrackbar("H min", "HSV Tuning", 25,  179, lambda x: None)
-cv2.createTrackbar("H max", "HSV Tuning", 85,  179, lambda x: None)
-cv2.createTrackbar("S min", "HSV Tuning", 30,  255, lambda x: None)
-cv2.createTrackbar("S max", "HSV Tuning", 255, 255, lambda x: None)
-cv2.createTrackbar("V min", "HSV Tuning", 30,  255, lambda x: None)
-cv2.createTrackbar("V max", "HSV Tuning", 255, 255, lambda x: None)
+frame_data = {"frame": None}
+cv2.namedWindow("RGB")
+cv2.setMouseCallback("RGB", on_mouse_click, frame_data)
 
 try:
     while True:
@@ -43,26 +68,16 @@ try:
         if not color_frame or not depth_frame:
             continue
 
-        # Apply filters — cast back to depth_frame to keep get_distance()
         depth_frame = spatial.process(depth_frame).as_depth_frame()
         depth_frame = temporal.process(depth_frame).as_depth_frame()
 
         color = np.asanyarray(color_frame.get_data())
         depth = np.asanyarray(depth_frame.get_data())
+        frame_data["frame"] = color.copy()
 
-        # Read HSV range from trackbars
-        h_min = cv2.getTrackbarPos("H min", "HSV Tuning")
-        h_max = cv2.getTrackbarPos("H max", "HSV Tuning")
-        s_min = cv2.getTrackbarPos("S min", "HSV Tuning")
-        s_max = cv2.getTrackbarPos("S max", "HSV Tuning")
-        v_min = cv2.getTrackbarPos("V min", "HSV Tuning")
-        v_max = cv2.getTrackbarPos("V max", "HSV Tuning")
-
-        # Green detection in HSV
+        # Object detection
         hsv = cv2.cvtColor(color, cv2.COLOR_BGR2HSV)
-        mask = cv2.inRange(hsv,
-                           np.array([h_min, s_min, v_min]),
-                           np.array([h_max, s_max, v_max]))
+        mask = cv2.inRange(hsv, hsv_lower, hsv_upper)
         mask = cv2.erode(mask, None, iterations=2)
         mask = cv2.dilate(mask, None, iterations=2)
 
@@ -78,13 +93,20 @@ try:
                 cv2.circle(color, (cx, cy), 5, (0, 0, 255), -1)
                 cv2.putText(color, label, (cx + 12, cy),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-                print(f"\r  Ball ({cx},{cy})  depth={label}    ", end="", flush=True)
+                print(f"\r  Object ({cx},{cy})  depth={label}    ", end="", flush=True)
 
-        # Normalize depth to 0.1–4.0m range for full color use
+        # HUD
+        cv2.putText(color, f"Tracking: {tracking_color}", (10, 25),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+        cv2.putText(color, "Click object to track", (10, 50),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+
+        # Depth viz
         depth_m = depth * depth_scale
         depth_clipped = np.clip(depth_m, 0.1, 4.0)
         depth_8bit = ((depth_clipped - 0.1) / 3.9 * 255).astype(np.uint8)
         depth_viz = cv2.applyColorMap(depth_8bit, cv2.COLORMAP_JET)
+
         cv2.imshow("RGB", color)
         cv2.imshow("Depth", depth_viz)
         cv2.imshow("Mask", mask)

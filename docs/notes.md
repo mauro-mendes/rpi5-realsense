@@ -209,14 +209,26 @@ source ~/realsense-env/bin/activate
 python examples/green_ball.py
 ```
 
-Output:
+Three windows open: **RGB**, **Depth** (JET colormap), **Mask**.
+
+**To track an object:**
+1. Point the camera at the object
+2. **Click on it** in the RGB window
+3. The script samples a 20×20 pixel region around the click, computes the
+   mean HSV value, and sets a ±tolerance range automatically
+4. The mask window shows what is being detected in white
+
+Terminal output on click:
 ```
-Depth scale: 0.001000 m/unit  |  Press 'q' to quit
-  Ball (611,324)  depth=1.98 m
-Stopped.
+Clicked (423,201) — HSV mean: H=52 S=88 V=61
+  Range: lower=[37 28  1]  upper=[67 148 121]
 ```
 
-Side-by-side window: RGB with bounding circle + distance label | depth colormap.
+When an object is detected:
+```
+  Object (423,201)  depth=0.82 m
+```
+
 Press `q` to quit cleanly. ✓
 
 ### Known issue: filter breaks get_distance()
@@ -229,6 +241,19 @@ Fix: cast back to `depth_frame` explicitly:
 depth_frame = spatial.process(depth_frame).as_depth_frame()
 depth_frame = temporal.process(depth_frame).as_depth_frame()
 ```
+
+### Color tuning tips
+
+The default HSV range targets verde folha (leaf green).
+For other colors, just click on the object.
+
+If the mask is noisy (detecting too much):
+- Click again on a better-lit area of the object
+- Or increase the erosion iterations in the code
+
+If the mask is empty (detecting nothing):
+- The object may be too dark or too saturated for the tolerance window
+- Increase `tol` values in `on_mouse_click()` (default: `[15, 60, 60]`)
 
 ### Final working stack
 
