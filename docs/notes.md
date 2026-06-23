@@ -280,6 +280,130 @@ If the mask is empty (detecting nothing):
 
 ---
 
+## Step 7 — Install additional dependencies (corridor tracker)
+
+```bash
+source ~/realsense-env/bin/activate
+pip install pyyaml matplotlib
+```
+
+---
+
+## Step 8 — Generate and print ArUco markers
+
+Run on any machine that has OpenCV (PC or RPi5):
+
+```bash
+# PC: pip install opencv-contrib-python (if needed)
+# RPi5: system opencv already includes aruco
+python tools/generate_aruco.py
+```
+
+Output: `tools/aruco_prints/` — one A4 PNG per marker.
+
+| Corridor | Marker IDs |
+|----------|-----------|
+| reto | 0, 1 |
+| S_esq_dir | 10, 11, 12, 13 |
+| U_esq | 20, 21, 22, 23 |
+
+**Print instructions:**
+- Print at **100% scale** (disable "fit to page")
+- Physical marker size must be **190 mm** — the config depends on this
+- Each PNG has a label at the bottom with the ID and corridor name
+
+---
+
+## Step 9 — Configure corridor dimensions
+
+Edit `config/corridors.yaml` after building each corridor.
+Fields marked `# measure after building` need real measurements (in meters).
+
+Confirmed widths:
+- `reto`: 1.4 m
+- `S_esq_dir`, `U_esq`: 1.2 m
+
+Marker placement per corridor:
+
+**reto** — marker on start wall (ID 0, facing N) and end wall (ID 1, facing S).
+
+**S_esq_dir** — marker at start (ID 10), right wall before first turn (ID 11),
+left wall after first turn (ID 12), end wall (ID 13).
+
+**U_esq** — top of first leg (ID 20), top center (ID 21),
+top of second leg (ID 22), end wall (ID 23).
+
+After updating `corridors.yaml`, the tracker uses the new values automatically.
+
+---
+
+## Step 10 — Run the corridor tracker
+
+Launch once per session. Run multiple trials back-to-back without restarting.
+
+```bash
+cd ~/rpi5-realsense
+source ~/realsense-env/bin/activate
+
+# Basic session
+python examples/corridor_tracker.py --corridor reto --conditions bengala colete
+
+# With video recording
+python examples/corridor_tracker.py --corridor reto --conditions bengala colete --record
+```
+
+**Keys during session:**
+
+| Key | Action |
+|-----|--------|
+| `1`, `2`, `3`... | Select condition (shown in top bar) |
+| `SPACE` | Start recording |
+| `SPACE` | Stop — auto-saves CSV (and MP4 if `--record`) |
+| `Q` | Quit and show session summary |
+
+**Output files** — one per trial, auto-incremented:
+```
+data/reto_bengala_001.csv
+data/reto_bengala_001.mp4   (only with --record)
+data/reto_colete_001.csv
+data/reto_bengala_002.csv   (second trial of same condition)
+```
+
+**CSV columns:** `t` (seconds from trial start), `x`, `y` (meters in corridor
+coords), `yaw_deg` (head orientation from IMU gyro), `speed_mps`.
+
+**Session summary** shown on quit:
+```
+── Session summary ──────────────────────────────────
+  reto_bengala_001.csv     bengala    18.3s  550 frames
+  reto_colete_001.csv      colete     15.1s  453 frames
+─────────────────────────────────────────────────────
+```
+
+---
+
+## Step 11 — Plot trial results
+
+```bash
+python examples/plot_trial.py \
+  data/reto_bengala_001.csv \
+  data/reto_colete_001.csv \
+  --corridor reto \
+  --out results/reto_trial1.png
+```
+
+The figure has four panels (similar to Peng et al. Fig. 5):
+1. **Trajectory** — top-view corridor map with user path
+2. **Head orientation** — yaw (degrees) vs time
+3. **Walking speed** — m/s vs time
+4. **Summary bars** — total time, total distance, average speed
+
+Each CSV passed = one colored line/condition in the plot.
+For single-trial plots (one representative trial per condition), this is
+consistent with how Peng et al. present their results.
+
+---
+
 ## Troubleshooting
 
 ### "No RealSense devices were found"
