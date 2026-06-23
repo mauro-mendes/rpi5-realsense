@@ -12,10 +12,15 @@ import numpy as np
 import cv2
 import pyrealsense2 as rs
 
-# --- HSV range (updated on mouse click) ---
-hsv_lower = np.array([25, 30, 30])
-hsv_upper = np.array([85, 255, 255])
-tracking_color = "green (default)"
+# --- Color presets (press key to switch, or click to auto-detect) ---
+PRESETS = {
+    ord('1'): ("verde musgo",  np.array([67, 32,  0]), np.array([97, 152,  89])),
+    ord('2'): ("verde folha",  np.array([46, 81,  0]), np.array([76, 201, 118])),
+}
+
+hsv_lower = PRESETS[ord('1')][1].copy()
+hsv_upper = PRESETS[ord('1')][2].copy()
+tracking_color = PRESETS[ord('1')][0]
 
 def on_mouse_click(event, x, y, flags, param):
     global hsv_lower, hsv_upper, tracking_color
@@ -50,8 +55,7 @@ align = rs.align(rs.stream.color)
 profile = pipeline.start(cfg)
 depth_scale = profile.get_device().first_depth_sensor().get_depth_scale()
 print(f"Depth scale: {depth_scale:.6f} m/unit")
-print("Click on any object in the RGB window to track it.")
-print("Press 'q' to quit.")
+print("Keys: 1=verde musgo  2=verde folha  click=auto-detect  q=quit")
 
 temporal = rs.temporal_filter()
 spatial  = rs.spatial_filter()
@@ -98,7 +102,7 @@ try:
         # HUD
         cv2.putText(color, f"Tracking: {tracking_color}", (10, 25),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-        cv2.putText(color, "Click object to track", (10, 50),
+        cv2.putText(color, "1=musgo  2=folha  click=auto  q=quit", (10, 50),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
 
         # Depth viz
@@ -110,8 +114,14 @@ try:
         cv2.imshow("RGB", color)
         cv2.imshow("Depth", depth_viz)
         cv2.imshow("Mask", mask)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
             break
+        if key in PRESETS:
+            tracking_color, hsv_lower, hsv_upper = PRESETS[key]
+            hsv_lower = hsv_lower.copy()
+            hsv_upper = hsv_upper.copy()
+            print(f"\nPreset: {tracking_color}  lower={hsv_lower}  upper={hsv_upper}")
 finally:
     pipeline.stop()
     cv2.destroyAllWindows()
