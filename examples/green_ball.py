@@ -13,9 +13,11 @@ import cv2
 import pyrealsense2 as rs
 
 # --- Color presets (press key to switch, or click to auto-detect) ---
+# S and V ranges are wide to handle poor lighting and distance (objects lose
+# saturation and brightness at range; musgo is already very dark up close)
 PRESETS = {
-    ord('1'): ("verde musgo",  np.array([67, 32,  0]), np.array([97, 152,  89])),
-    ord('2'): ("verde folha",  np.array([46, 81,  0]), np.array([76, 201, 118])),
+    ord('1'): ("verde musgo",  np.array([62, 10,  0]), np.array([102, 210, 130])),
+    ord('2'): ("verde folha",  np.array([41, 35,  0]), np.array([ 86, 255, 180])),
 }
 
 hsv_lower = PRESETS[ord('1')][1].copy()
@@ -38,7 +40,7 @@ def on_mouse_click(event, x, y, flags, param):
     hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
     mean = hsv_roi.mean(axis=(0, 1))
     std  = hsv_roi.std(axis=(0, 1))
-    tol = np.array([15, 60, 60])
+    tol = np.array([15, 80, 80])
     hsv_lower = np.clip(mean - tol, 0, [179, 255, 255]).astype(np.uint8)
     hsv_upper = np.clip(mean + tol, 0, [179, 255, 255]).astype(np.uint8)
     tracking_color = f"H={mean[0]:.0f} S={mean[1]:.0f} V={mean[2]:.0f}"
@@ -88,7 +90,7 @@ try:
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if contours:
             c = max(contours, key=cv2.contourArea)
-            if cv2.contourArea(c) > 500:
+            if cv2.contourArea(c) > 150:
                 (cx, cy), radius = cv2.minEnclosingCircle(c)
                 cx, cy = int(cx), int(cy)
                 dist_m = depth_frame.get_distance(cx, cy)
