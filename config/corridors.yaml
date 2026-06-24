@@ -90,45 +90,62 @@ corridors:
         note: "end wall"
 
   U_esq:
-    description: "Corredor U: 2 curvas para esquerda"
-    # Layout (top view):
+    description: "Corredor U: ilha central, câmera fixa na abertura"
     #
-    #   [23]|      |[20]
-    #       |      |
-    #   [22]|      |
-    #       |______|
-    #              |[21]
-    #              | start
+    # Layout visto de cima (câmera fora, olhando para +Y):
     #
-    # Seg 1: going N  (x=0,        y=0..seg1)
-    # Seg 2: going W  (y=seg1,     x=0..-seg2)
-    # Seg 3: going S  (x=-seg2,    y=seg1..0)
+    #  câmera
+    #    ↓
+    #  ✕              •        y=0  (entradas)
+    #  |      |¯¯¯¯¯|      |
+    #  | arm1 |ilha | arm2 |
+    #  | 1.2m |1.1m | 1.2m |   2.1m  (seção paralela = 3.3-1.2)
+    #  |      |_____|      |
+    #  |   (viragem 1.2m)  |   1.2m  (espaço de viragem)
+    #  |___________________|        y=3.3 (parede do fundo)
+    #  ←──────── 3.5m ──────→
     #
-    width_m: 1.2
-    seg1_len_m: 3.0      # measure after building
-    seg2_len_m: 2.0      # measure after building (width of the U top)
-    seg3_len_m: 3.0      # measure after building (usually = seg1)
-    walls: []            # filled in by corridor_tracker.py from seg lengths
-    start: [ 0.0, 0.3]
-    goal:  [-2.0, 0.3]   # update: [-seg2, 0.3]
+    # Origem: canto externo esquerdo da entrada (x=0, y=0)
+    # +X: direita  |  +Y: para dentro do U
+    #
+    # Marcadores (na parede que ENFRENTA a câmera, ou seja, face -Y):
+    #   ID 20 e 21: face inferior da ilha (y=2.1), visíveis por arm1/arm2
+    #   ID 22 e 23: parede do fundo (y=3.3), visíveis por arm1/arm2
+    #
+    total_width_m: 3.5       # largura externa total
+    total_height_m: 3.3      # altura externa total
+    corridor_width_m: 1.2    # largura interna do corredor (igual em todo lugar)
+    island_width_m: 1.1      # largura da ilha central (= 3.5 - 2*1.2)
+    island_length_m: 2.1     # comprimento da ilha (= 3.3 - 1.2)
+    turning_space_m: 1.2     # espaço de viragem no fundo (= corridor_width_m)
+
+    walls:
+      - [[0.0, 0.0], [0.0, 3.3]]    # parede externa esquerda
+      - [[0.0, 3.3], [3.5, 3.3]]    # parede do fundo
+      - [[3.5, 3.3], [3.5, 0.0]]    # parede externa direita
+      - [[1.2, 0.0], [1.2, 2.1]]    # ilha: face esquerda
+      - [[1.2, 2.1], [2.3, 2.1]]    # ilha: face inferior (enfrenta câmera)
+      - [[2.3, 2.1], [2.3, 0.0]]    # ilha: face direita
+
+    start: [0.6, 0.3]    # centro do arm1, 0.3m da entrada
+    goal:  [2.9, 0.3]    # centro do arm2, 0.3m da saída
+
+    # Posições 3D dos marcadores em frame do corredor [x, y, z_altura]
+    # z=0.5: marcadores colados na parede a 0.5m do chão
     markers:
       - id: 20
-        x:  0.0
-        y:  3.0          # update to seg1_len
-        facing: S
-        note: "top of first leg (right side)"
+        pos: [1.2, 2.1, 0.5]
+        facing: S             # face inferior da ilha → enfrenta câmera (-Y)
+        note: "canto esquerdo da face inferior da ilha"
       - id: 21
-        x: -1.0          # update to -seg2_len/2 (middle of top segment)
-        y:  3.0          # update to seg1_len
+        pos: [2.3, 2.1, 0.5]
         facing: S
-        note: "top of U, center wall"
+        note: "canto direito da face inferior da ilha"
       - id: 22
-        x: -2.0          # update to -seg2_len
-        y:  3.0          # update to seg1_len
-        facing: S
-        note: "top of second leg (left side)"
+        pos: [0.6, 3.3, 0.5]
+        facing: S             # parede do fundo → enfrenta câmera (-Y)
+        note: "parede do fundo, centro do arm1"
       - id: 23
-        x: -2.0          # update to -seg2_len
-        y:  0.0
-        facing: N
-        note: "end wall (goal)"
+        pos: [2.9, 3.3, 0.5]
+        facing: S
+        note: "parede do fundo, centro do arm2"
