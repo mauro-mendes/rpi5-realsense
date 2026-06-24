@@ -12,6 +12,14 @@ import numpy as np
 import cv2
 import pyrealsense2 as rs
 
+# --- Detection tuning (calibrated for a 100mm ball up to ~6.3m) ---
+# A 100mm ball at 6.3m is only ~15px wide @ 1280x720 (~172px area), so the
+# morphology must be gentle and the area threshold low or it gets filtered out.
+RES_W, RES_H = 1280, 720      # higher res = larger blob at distance (geometry)
+MIN_AREA     = 25             # px^2; ~172 expected at 6.3m, leave margin for noise
+MIN_RADIUS   = 3             # px; rejects single-pixel noise speckles
+DEPTH_PATCH  = 2             # half-window for median depth (robust at range)
+
 # --- Color presets (press key to switch, or click to auto-detect) ---
 # S and V ranges are wide to handle poor lighting and distance (objects lose
 # saturation and brightness at range; musgo is already very dark up close)
@@ -40,9 +48,12 @@ def on_mouse_click(event, x, y, flags, param):
     hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
     mean = hsv_roi.mean(axis=(0, 1))
     std  = hsv_roi.std(axis=(0, 1))
-    tol = np.array([15, 80, 80])
-    hsv_lower = np.clip(mean - tol, 0, [179, 255, 255]).astype(np.uint8)
-    hsv_upper = np.clip(mean + tol, 0, [179, 255, 255]).astype(np.uint8)
+    # Keep H tight (the discriminating channel) but allow S/V to drop a lot:
+    # at distance the ball desaturates and darkens, so the floor must be low.
+    tol_lo = np.array([12, 130, 130])
+    tol_hi = np.array([12,  90,  90])
+    hsv_lower = np.clip(mean - tol_lo, 0, [179, 255, 255]).astype(np.uint8)
+    hsv_upper = np.clip(mean + tol_hi, 0, [179, 255, 255]).astype(np.uint8)
     tracking_color = f"H={mean[0]:.0f} S={mean[1]:.0f} V={mean[2]:.0f}"
     print(f"\nClicked ({x},{y}) — HSV mean: {tracking_color}")
     print(f"  Range: lower={hsv_lower}  upper={hsv_upper}")
@@ -50,8 +61,8 @@ def on_mouse_click(event, x, y, flags, param):
 # --- Pipeline ---
 pipeline = rs.pipeline()
 cfg = rs.config()
-cfg.enable_stream(rs.stream.color, 848, 480, rs.format.bgr8, 30)
-cfg.enable_stream(rs.stream.depth, 848, 480, rs.format.z16, 30)
+cfg.enable_stream(rs.stream.color, RES_W, RES_H, rs.format.bgr8, 30)
+cfg.enable_stream(rs.stream.depth, RES_W, RES_H, rs.format.z16, 30)
 align = rs.align(rs.stream.color)
 
 profile = pipeline.start(cfg)
@@ -61,6 +72,18 @@ print("Keys: 1=verde musgo  2=verde folha  click=auto-detect  q=quit")
 
 temporal = rs.temporal_filter()
 spatial  = rs.spatial_filter()
+
+
+def median_distance(depth_frame, cx, cy, w, h, r=DEPTH_PATCH):
+    """Median of valid depths in a (2r+1)^2 window — a single pixel at 6m
+    often reads 0, so sample a patch and ignore invalid (0) returns."""
+    vals = []
+    for yy in range(max(0, cy - r), min(h, cy + r + 1)):
+        for xx in range(max(0, cx - r), min(w, cx + r + 1)):
+            d = depth_frame.get_distance(xx, yy)
+            if d > 0:
+                vals.append(d)
+    return float(np.median(vals)) if vals else 0.0
 
 frame_data = {"frame": None}
 cv2.namedWindow("RGB")
@@ -82,18 +105,23 @@ try:
         frame_data["frame"] = color.copy()
 
         # Object detection
+        h_img, w_img = color.shape[:2]
         hsv = cv2.cvtColor(color, cv2.COLOR_BGR2HSV)
         mask = cv2.inRange(hsv, hsv_lower, hsv_upper)
-        mask = cv2.erode(mask, None, iterations=2)
-        mask = cv2.dilate(mask, None, iterations=2)
+        # Gentle morphology: a distant ball is ~15px, so 'open' (erode+dilate,
+        # 1 iter) removes speckle noise without erasing the blob; small dilate
+        # then consolidates it.
+        k3 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k3, iterations=1)
+        mask = cv2.dilate(mask, k3, iterations=1)
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if contours:
             c = max(contours, key=cv2.contourArea)
-            if cv2.contourArea(c) > 150:
-                (cx, cy), radius = cv2.minEnclosingCircle(c)
-                cx, cy = int(cx), int(cy)
-                dist_m = depth_frame.get_distance(cx, cy)
+            (cx, cy), radius = cv2.minEnclosingCircle(c)
+            cx, cy = int(cx), int(cy)
+            if cv2.contourArea(c) > MIN_AREA and radius >= MIN_RADIUS:
+                dist_m = median_distance(depth_frame, cx, cy, w_img, h_img)
                 label = f"{dist_m:.2f} m" if dist_m > 0 else "---"
                 cv2.circle(color, (cx, cy), int(radius), (0, 255, 0), 2)
                 cv2.circle(color, (cx, cy), 5, (0, 0, 255), -1)
@@ -109,8 +137,8 @@ try:
 
         # Depth viz
         depth_m = depth * depth_scale
-        depth_clipped = np.clip(depth_m, 0.1, 4.0)
-        depth_8bit = ((depth_clipped - 0.1) / 3.9 * 255).astype(np.uint8)
+        depth_clipped = np.clip(depth_m, 0.1, 7.0)
+        depth_8bit = ((depth_clipped - 0.1) / 6.9 * 255).astype(np.uint8)
         depth_viz = cv2.applyColorMap(depth_8bit, cv2.COLORMAP_JET)
 
         cv2.imshow("RGB", color)
