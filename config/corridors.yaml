@@ -118,6 +118,12 @@ corridors:
     island_width_m: 1.1      # largura da ilha central (= 3.5 - 2*1.2)
     island_length_m: 2.1     # comprimento da ilha (= 3.3 - 1.2)
     turning_space_m: 1.2     # espaço de viragem no fundo (= corridor_width_m)
+    wall_height_m: 1.8       # altura das paredes de papelão
+
+    # Câmera fixa fora do U, deslocada para frente do arm1
+    # Deve ficar acima de 1.8m para ver por cima da ilha
+    camera_x_m: 0.6          # alinhada com centro do arm1
+    camera_z_min_m: 1.9      # mínimo para linha de visão passar acima da ilha
 
     walls:
       - [[0.0, 0.0], [0.0, 3.3]]    # parede externa esquerda
@@ -130,22 +136,23 @@ corridors:
     start: [0.6, 0.3]    # centro do arm1, 0.3m da entrada
     goal:  [2.9, 0.3]    # centro do arm2, 0.3m da saída
 
-    # Posições 3D dos marcadores em frame do corredor [x, y, z_altura]
-    # z=0.5: marcadores colados na parede a 0.5m do chão
+    # Marcadores verticais no topo das paredes, base a 1.8m do chão.
+    # Centro do marker a 1.895m (= 1.8 + 0.19/2, marker_size=0.19m).
+    # Câmera acima de 1.9m vê por cima da ilha → todos visíveis.
     markers:
       - id: 20
-        pos: [1.2, 2.1, 0.5]
-        facing: S             # face inferior da ilha → enfrenta câmera (-Y)
-        note: "canto esquerdo da face inferior da ilha"
+        pos: [1.2, 2.1, 1.895]
+        facing: S
+        note: "topo da ilha, canto esquerdo (face inferior)"
       - id: 21
-        pos: [2.3, 2.1, 0.5]
+        pos: [2.3, 2.1, 1.895]
         facing: S
-        note: "canto direito da face inferior da ilha"
+        note: "topo da ilha, canto direito (face inferior)"
       - id: 22
-        pos: [0.6, 3.3, 0.5]
-        facing: S             # parede do fundo → enfrenta câmera (-Y)
-        note: "parede do fundo, centro do arm1"
-      - id: 23
-        pos: [2.9, 3.3, 0.5]
+        pos: [0.6, 3.3, 1.895]
         facing: S
-        note: "parede do fundo, centro do arm2"
+        note: "topo da parede do fundo, sobre arm1"
+      - id: 23
+        pos: [2.9, 3.3, 1.895]
+        facing: S
+        note: "topo da parede do fundo, sobre arm2"
