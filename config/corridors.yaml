@@ -85,27 +85,27 @@ corridors:
     # Marcadores no topo das paredes (base a 1.8m, centro a 1.895m)
     markers:
       - id: 20
-        pos: [1.2, 2.1, 1.895]
+        pos: [1.2, 2.1, 1.610]
         facing: S
         note: "topo da ilha, canto esquerdo (face inferior)"
       - id: 21
-        pos: [2.3, 2.1, 1.895]
+        pos: [2.3, 2.1, 1.610]
         facing: S
         note: "topo da ilha, canto direito (face inferior)"
       - id: 22
-        pos: [0.6, 3.3, 1.895]
+        pos: [0.6, 3.3, 1.875]
         facing: S
         note: "topo da parede do fundo, sobre arm1"
       - id: 23
-        pos: [2.9, 3.3, 1.895]
+        pos: [2.9, 3.3, 1.875]
         facing: S
         note: "topo da parede do fundo, sobre arm2"
       - id: 24
-        pos: [2.5, 5.5, 1.895]
+        pos: [2.5, 5.5, 2.200]
         facing: S
         note: "parede do fundo da extensão, lado esquerdo (arm2)"
       - id: 25
-        pos: [3.2, 5.5, 1.895]
+        pos: [3.2, 5.5, 2.200]
         facing: S
         note: "parede do fundo da extensão, lado direito (arm2)"
 
@@ -152,27 +152,27 @@ corridors:
     # Mesmos marcadores físicos do U_esq + 2 novos no fundo da extensão
     markers:
       - id: 20
-        pos: [1.2, 2.1, 1.895]
+        pos: [1.2, 2.1, 1.610]
         facing: S
         note: "topo da ilha, canto esquerdo (face inferior)"
       - id: 21
-        pos: [2.3, 2.1, 1.895]
+        pos: [2.3, 2.1, 1.610]
         facing: S
         note: "topo da ilha, canto direito (face inferior)"
       - id: 22
-        pos: [0.6, 3.3, 1.895]
+        pos: [0.6, 3.3, 1.875]
         facing: S
         note: "topo da parede do fundo, sobre arm1"
       - id: 23
-        pos: [2.9, 3.3, 1.895]
+        pos: [2.9, 3.3, 1.875]
         facing: S
         note: "topo da parede do fundo, sobre arm2"
       - id: 24
-        pos: [2.5, 5.5, 1.895]
+        pos: [2.5, 5.5, 2.200]
         facing: S
         note: "parede do fundo da extensão, lado esquerdo (arm2)"
       - id: 25
-        pos: [3.2, 5.5, 1.895]
+        pos: [3.2, 5.5, 2.200]
         facing: S
         note: "parede do fundo da extensão, lado direito (arm2)"
 
@@ -236,26 +236,26 @@ corridors:
     # Mesmos marcadores físicos do U_esq + 2 novos no fundo da extensão
     markers:
       - id: 20
-        pos: [1.2, 2.1, 1.895]
+        pos: [1.2, 2.1, 1.610]
         facing: S
         note: "topo da ilha, canto esquerdo (face inferior)"
       - id: 21
-        pos: [2.3, 2.1, 1.895]
+        pos: [2.3, 2.1, 1.610]
         facing: S
         note: "topo da ilha, canto direito (face inferior)"
       - id: 22
-        pos: [0.6, 3.3, 1.895]
+        pos: [0.6, 3.3, 1.875]
         facing: S
         note: "topo da parede do fundo, sobre arm1"
       - id: 23
-        pos: [2.9, 3.3, 1.895]
+        pos: [2.9, 3.3, 1.875]
         facing: S
         note: "topo da parede do fundo, sobre arm2"
       - id: 24
-        pos: [2.5, 5.5, 1.895]
+        pos: [2.5, 5.5, 2.200]
         facing: S
         note: "parede do fundo da extensão, lado esquerdo (arm2)"
       - id: 25
-        pos: [3.2, 5.5, 1.895]
+        pos: [3.2, 5.5, 2.200]
         facing: S
         note: "parede do fundo da extensão, lado direito (arm2)"

@@ -256,10 +256,11 @@ def draw_side_view(ax, c):
     W      = c["total_width_m"]
     cw     = c["corridor_width_m"]
     wh     = c["wall_height_m"]
-    mk_z   = c["markers"][0]["pos"][2]
     ms     = c.get("marker_size_m", 0.19)
     cam_x  = c.get("camera_x_m", cw/2)
     cam_z  = c.get("camera_z_min_m", 1.9)
+    # z alturas reais medidas (podem variar por marcador)
+    unique_z = sorted({m["pos"][2] for m in c["markers"]})
 
     ax.set_facecolor(BG_COLOR)
     ax.set_aspect("equal")
@@ -283,12 +284,21 @@ def draw_side_view(ax, c):
         ax.add_patch(plt.Polygon([(x0,0),(x1,0),(x1,wh),(x0,wh)],
                                  fc=WALL_COLOR, ec="none", alpha=0.15, zorder=1))
 
-    # marcadores no topo
-    # marcadores 24-25 (y=5.5, fundo da extensão) têm borda tracejada
+    # linhas de referência para cada altura real de marcador
+    z_colors = {}
+    ref_palette = ["#9b59b6", "#16a085", "#d35400"]
+    for i, uz in enumerate(unique_z):
+        col = ref_palette[i % len(ref_palette)]
+        z_colors[uz] = col
+        ax.axhline(uz, color=col, lw=0.9, linestyle=":", alpha=0.7, zorder=3)
+        ax.text(-0.50, uz, f"z={uz:.3g} m", va="center", ha="right",
+                fontsize=7, color=col)
+
+    # marcadores (quadrados no topo de cada parede)
     for m in c["markers"]:
         mx, my, mz = m["pos"]
         base = mz - ms/2
-        deep = my > 3.5   # marcadores no fundo da extensão
+        deep = my > 3.5
         fc   = MARKER_COLOR if not deep else "#c0392b"
         ls   = "-" if not deep else "--"
         ax.add_patch(plt.Rectangle((mx - ms/2, base), ms, ms,
@@ -296,9 +306,6 @@ def draw_side_view(ax, c):
                                    linestyle=ls, zorder=5))
         ax.text(mx, mz, str(m["id"]), ha="center", va="center",
                 fontsize=6, fontweight="bold", color="white", zorder=6)
-        if deep:
-            ax.text(mx, mz - ms/2 - 0.05, f"y={my:.1f}", ha="center",
-                    va="top", fontsize=5.5, color=fc, zorder=6)
 
     # câmera com seta de anotação
     ax.plot(cam_x, cam_z, marker=">", ms=14, color=CAMERA_COLOR,
@@ -332,8 +339,7 @@ def draw_side_view(ax, c):
             fontsize=7, color="#333")
 
     # cotas de altura
-    dim_v(ax, 0, wh,  -0.18, f"{wh:.1f} m\n(parede)")
-    dim_v(ax, 0, mk_z, W+0.18, f"{mk_z:.3g} m\n(marker)", left=False)
+    dim_v(ax, 0, wh,    -0.18, f"{wh:.1f} m\n(parede)")
     dim_v(ax, 0, cam_z, cam_x + 0.4, f"≥{cam_z:.2g} m\n(câmera)", left=False)
 
     # linha de referência do topo das paredes
@@ -341,8 +347,9 @@ def draw_side_view(ax, c):
     ax.text(-0.05, wh, f"topo\n{wh} m", va="center",
             fontsize=7, color=WALL_COLOR, ha="right")
 
-    ax.set_xlim(-0.55, W + 0.65)
-    ax.set_ylim(-0.45, cam_z + 0.55)
+    ax.set_xlim(-0.65, W + 0.65)
+    max_z = max(cam_z, max(unique_z))
+    ax.set_ylim(-0.45, max_z + 0.55)
     ax.invert_xaxis()
     ax.set_title("Vista frontal (elevação)", fontsize=11, fontweight="bold")
     ax.set_xlabel("X (m)  [eixo espelhado: arm1 à direita, arm2 à esquerda]", fontsize=9)
