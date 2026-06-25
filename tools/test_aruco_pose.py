@@ -16,7 +16,8 @@ Uso (RPi5):
 Teclas:
     Q — sair
     S — salva frame atual em output/aruco_pose_NNNN.png
-    C — limpa histórico de estabilidade
+    C — limpa histórico + lock (recalibra tudo)
+    R — reseta apenas o lock (mantém histórico)
 """
 
 import argparse
@@ -39,7 +40,8 @@ OUT_DIR       = Path(__file__).parent.parent / "output"
 DICT_TYPE     = cv2.aruco.DICT_4X4_50
 MIN_MARKERS   = 4          # mínimo para solvePnP
 HISTORY_LEN   = 30         # frames para cálculo de estabilidade
-CAM_EXPECTED  = np.array([1.98, -3.20, 2.14])  # posição empírica (mínimo de reprojeção)
+LOCK_AFTER    = 3          # poses válidas consecutivas para fixar pose da câmara
+CAM_EXPECTED  = np.array([1.90, -2.30, 1.98])  # medido em fita métrica (x,y,z) em metros
 
 # ── Carrega marcadores do YAML (IDs únicos) e tamanho físico ─────────────
 def load_marker_positions(yaml_path: Path) -> tuple[dict[int, np.ndarray], float]:
@@ -71,7 +73,7 @@ def camera_world_pos(rvec, tvec) -> np.ndarray:
 
 # ── Overlay na frame ───────────────────────────────────────────────────────
 def draw_overlay(frame, detected_ids, pose_valid, cam_pos, reproj_mean,
-                 reproj_max, n_used, history):
+                 reproj_max, n_used, history, pose_locked=False, lock_count=0):
     h, w = frame.shape[:2]
 
     def put(text, row, col=10, color=(220, 220, 220), scale=0.60, thick=1):
@@ -108,6 +110,18 @@ def draw_overlay(frame, detected_ids, pose_valid, cam_pos, reproj_mean,
     else:
         put(f"solvePnP  : aguardando ≥{MIN_MARKERS} marcadores...", 1,
             color=(80, 80, 255))
+
+    # Estado de lock da câmara
+    if pose_locked:
+        lock_txt = "CAM LOCKED"
+        cv2.rectangle(frame, (w - 190, 5), (w - 5, 38), (0, 180, 0), -1)
+        cv2.putText(frame, lock_txt, (w - 182, 29),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.75, (10, 10, 10), 2, cv2.LINE_AA)
+    else:
+        calib_txt = f"calib {lock_count}/{LOCK_AFTER}"
+        cv2.rectangle(frame, (w - 190, 5), (w - 5, 38), (0, 100, 200), -1)
+        cv2.putText(frame, calib_txt, (w - 182, 29),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.75, (230, 230, 230), 2, cv2.LINE_AA)
 
     put("Q=sair  S=salvar  C=limpar histórico", 6,
         color=(120, 120, 120), scale=0.50)
@@ -175,6 +189,11 @@ def main():
     last_valid_tvec = tvec_init.copy()
 
     history: list[np.ndarray] = []
+    lock_count  = 0
+    pose_locked = False
+    locked_rvec = None
+    locked_tvec = None
+    locked_pos  = None
     save_idx     = 0
     frame_count  = 0
     last_log     = time.time()
@@ -238,19 +257,29 @@ def main():
             # ── Depth → posição da câmara sem ambiguidade ─────────────────
             # Cada marcador + leitura de profundidade dá 1 estimativa de pos da câmara.
             # Câmara horizontal → R=R_init exacto; depth resolve qual dos 2 lados.
+            # Usa mediana numa vizinhança 5×5 à volta do centro do marker para robustez.
             depth_estimates: list[np.ndarray] = []
             if depth_f and n_det_markers > 0:
                 for mid, corners in zip(detected_ids,
                                         [c[0] for c in corners_list]):
                     if mid not in known:
                         continue
-                    px, py = corners.mean(axis=0)
-                    d = depth_f.get_distance(int(np.clip(px, 0, 639)),
-                                             int(np.clip(py, 0, 479)))
-                    if 0.3 < d < 12.0:
-                        p_cam = np.array(rs.rs2_deproject_pixel_to_point(
-                            intr, [float(px), float(py)], d))
-                        depth_estimates.append(known[mid] - R_init.T @ p_cam)
+                    cx_px, cy_px = corners.mean(axis=0)
+                    # Amostra 5×5 ao redor do centro; descarta zeros e outliers
+                    samples = []
+                    for dy in range(-2, 3):
+                        for dx in range(-2, 3):
+                            xi = int(np.clip(cx_px + dx, 0, 639))
+                            yi = int(np.clip(cy_px + dy, 0, 479))
+                            val = depth_f.get_distance(xi, yi)
+                            if 0.3 < val < 12.0:
+                                samples.append(val)
+                    if not samples:
+                        continue
+                    d = float(np.median(samples))
+                    p_cam = np.array(rs.rs2_deproject_pixel_to_point(
+                        intr, [float(cx_px), float(cy_px)], d))
+                    depth_estimates.append(known[mid] - R_init.T @ p_cam)
 
             cam_from_depth = (np.median(depth_estimates, axis=0)
                               if depth_estimates else None)
@@ -259,51 +288,55 @@ def main():
             cam_pos     = np.zeros(3)
             reproj_mean = reproj_max = 0.0
 
-            if n_det_markers >= MIN_MARKERS:
-                obj_arr = np.array(obj_pts, dtype=np.float64)
-                img_arr = np.array(img_pts, dtype=np.float64)
-
-                # Seed: depth (sem ambiguidade) > EPnP > último seed válido
-                if cam_from_depth is not None:
-                    tvec_d   = (-R_init @ cam_from_depth.reshape(3, 1)).astype(np.float64)
-                    seed_rv, seed_tv = rvec_init, tvec_d
-                else:
-                    ok_e, rvec_e, tvec_e = cv2.solvePnP(
-                        obj_arr, img_arr, K, dist, flags=cv2.SOLVEPNP_EPNP)
-                    if ok_e and camera_world_pos(rvec_e, tvec_e)[1] < 0:
-                        seed_rv, seed_tv = rvec_e, tvec_e
-                    else:
-                        seed_rv, seed_tv = last_valid_rvec, last_valid_tvec
-
-                # Refina com LM a partir do seed
-                ok, rvec, tvec = cv2.solvePnP(
-                    obj_arr, img_arr, K, dist,
-                    seed_rv, seed_tv, useExtrinsicGuess=True,
-                    flags=cv2.SOLVEPNP_ITERATIVE)
-
-                if ok:
-                    proposed = camera_world_pos(rvec, tvec)
-                    # Reproj sempre em todos os 24 pontos (não só inliers)
+            if pose_locked:
+                # ── Pose fixada: usa directamente, só calcula reproj ─────────
+                pose_valid = True
+                cam_pos    = locked_pos.copy()
+                rvec_use   = locked_rvec
+                tvec_use   = locked_tvec
+                if n_det_markers >= 1:
+                    obj_arr = np.array(obj_pts, dtype=np.float64)
+                    img_arr = np.array(img_pts, dtype=np.float64)
                     reproj_mean, reproj_max = reprojection_error(
-                        obj_arr, img_arr, rvec, tvec, K, dist)
+                        obj_arr, img_arr, rvec_use, tvec_use, K, dist)
 
-                    if proposed[1] < 0 and proposed[2] > 0.3:
-                        pose_valid      = True
-                        cam_pos         = proposed
-                        last_valid_rvec = rvec.copy()   # actualiza seed para próximo frame
-                        last_valid_tvec = tvec.copy()
-                        history.append(cam_pos.copy())
-                        if len(history) > HISTORY_LEN:
-                            history.pop(0)
-                    elif len(history) > 0:
-                        pose_valid = True
-                        cam_pos    = history[-1].copy()
-                        print(f"[WARN f={frame_count:05d}] pose inválida y={proposed[1]:+.2f}"
-                              f" reproj={reproj_mean:.1f}px — usando última boa")
+            elif (cam_from_depth is not None
+                  and cam_from_depth[1] < 0          # câmara fora do corredor
+                  and cam_from_depth[2] > 1.0):      # câmara acima de 1m (sanity)
+                # ── Depth válido: usa posição diretamente; R=R_init (horizontal) ──
+                rvec_use = rvec_init
+                tvec_use = (-R_init @ cam_from_depth.reshape(3, 1)).astype(np.float64)
+                if n_det_markers >= 1:
+                    obj_arr = np.array(obj_pts, dtype=np.float64)
+                    img_arr = np.array(img_pts, dtype=np.float64)
+                    reproj_mean, reproj_max = reprojection_error(
+                        obj_arr, img_arr, rvec_use, tvec_use, K, dist)
+                pose_valid      = True
+                cam_pos         = cam_from_depth.copy()
+                last_valid_rvec = rvec_use.copy()
+                last_valid_tvec = tvec_use.copy()
+                history.append(cam_pos.copy())
+                if len(history) > HISTORY_LEN:
+                    history.pop(0)
+                lock_count += 1
+                if lock_count >= LOCK_AFTER:
+                    pose_locked = True
+                    locked_rvec = rvec_use.copy()
+                    locked_tvec = tvec_use.copy()
+                    locked_pos  = np.mean(history, axis=0)
+                    print(f"\n[LOCKED] Pose da câmara fixada ({LOCK_AFTER} depth válidos)!")
+                    print(f"         cam=({locked_pos[0]:+.3f},"
+                          f"{locked_pos[1]:+.3f},{locked_pos[2]:+.3f})\n")
+
+            elif len(history) > 0:
+                # ── Sem depth válido: mantém última pose boa ─────────────────
+                pose_valid = True
+                cam_pos    = history[-1].copy()
 
             # ── Overlay na frame ──────────────────────────────────────────
             draw_overlay(frame, detected_ids, pose_valid, cam_pos,
-                         reproj_mean, reproj_max, n_det_markers, history)
+                         reproj_mean, reproj_max, n_det_markers, history,
+                         pose_locked=pose_locked, lock_count=lock_count)
 
             # ── Log no terminal a cada 2 s ────────────────────────────────
             now = time.time()
@@ -348,7 +381,15 @@ def main():
                     print(f"Salvo: {fname}")
                 elif key == ord("c"):
                     history.clear()
-                    print("Histórico de estabilidade limpo.")
+                    lock_count  = 0
+                    pose_locked = False
+                    locked_rvec = locked_tvec = locked_pos = None
+                    print("Histórico e lock limpos — a recalibrar.")
+                elif key == ord("r"):
+                    pose_locked = False
+                    lock_count  = 0
+                    locked_rvec = locked_tvec = locked_pos = None
+                    print("Lock resetado — a recalibrar (histórico mantido).")
 
     finally:
         pipeline.stop()
