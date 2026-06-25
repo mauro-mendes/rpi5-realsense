@@ -48,10 +48,20 @@ MIN_MARKERS = 4
 LOCK_AFTER  = 5          # depth válidos consecutivos para fixar pose
 
 # ── Detecção da bola (HSV verde) ──────────────────────────────────────────────
-# H: 35-85  S: 50-255  V: 50-255  → bola verde típica (tennis, eva, etc.)
-# Ajustar H se a bola for verde-azulado (H mais alto) ou verde-amarelado (H mais baixo)
-BALL_HSV_LOW  = np.array([35,  50,  50], dtype=np.uint8)
-BALL_HSV_HIGH = np.array([85, 255, 255], dtype=np.uint8)
+# Valores lidos de config/ball_hsv.yaml (gerado por calibrate_ball_hsv.py).
+# Se o ficheiro não existir, usa estes defaults.
+_HSV_CFG = Path(__file__).parent.parent / "config" / "ball_hsv.yaml"
+if _HSV_CFG.exists():
+    with open(_HSV_CFG) as _f:
+        _h = yaml.safe_load(_f).get("ball_hsv", {})
+    BALL_HSV_LOW  = np.array([_h.get("h_low", 35),  _h.get("s_low", 50),
+                               _h.get("v_low", 50)],  dtype=np.uint8)
+    BALL_HSV_HIGH = np.array([_h.get("h_high", 85), _h.get("s_high", 255),
+                               _h.get("v_high", 255)], dtype=np.uint8)
+else:
+    BALL_HSV_LOW  = np.array([35,  50,  50], dtype=np.uint8)
+    BALL_HSV_HIGH = np.array([85, 255, 255], dtype=np.uint8)
+
 MIN_BALL_AREA = 300      # px² — reduzir se a bola aparecer pequena na imagem
 RECORD_HZ     = 10       # pontos/segundo a gravar (máximo)
 
@@ -221,8 +231,10 @@ def main():
     markers, marker_size, cfg = load_yaml(YAML_PATH)
     marker_half = marker_size / 2.0
     print(f"Corredor : {args.corridor}")
-    print(f"Bola HSV : H={BALL_HSV_LOW[0]}-{BALL_HSV_HIGH[0]}"
-          f"  S≥{BALL_HSV_LOW[1]}  V≥{BALL_HSV_LOW[2]}")
+    hsv_src = f"(de {_HSV_CFG.name})" if _HSV_CFG.exists() else "(default)"
+    print(f"Bola HSV : H=[{BALL_HSV_LOW[0]},{BALL_HSV_HIGH[0]}]"
+          f"  S=[{BALL_HSV_LOW[1]},{BALL_HSV_HIGH[1]}]"
+          f"  V=[{BALL_HSV_LOW[2]},{BALL_HSV_HIGH[2]}]  {hsv_src}")
     print(f"Marcadores conhecidos: {sorted(markers)}")
 
     # ── ArUco ─────────────────────────────────────────────────────────────────
