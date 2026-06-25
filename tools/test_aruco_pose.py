@@ -41,8 +41,8 @@ MIN_MARKERS   = 4          # mínimo para solvePnP
 HISTORY_LEN   = 30         # frames para cálculo de estabilidade
 CAM_EXPECTED  = np.array([1.90, -2.30, 1.98])  # posição medida da câmara (m)
 
-# ── Carrega marcadores do YAML (IDs únicos) ────────────────────────────────
-def load_marker_positions(yaml_path: Path) -> dict[int, np.ndarray]:
+# ── Carrega marcadores do YAML (IDs únicos) e tamanho físico ─────────────
+def load_marker_positions(yaml_path: Path) -> tuple[dict[int, np.ndarray], float]:
     with open(yaml_path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     positions: dict[int, np.ndarray] = {}
@@ -51,7 +51,8 @@ def load_marker_positions(yaml_path: Path) -> dict[int, np.ndarray]:
             mid = m["id"]
             if mid not in positions:
                 positions[mid] = np.array(m["pos"], dtype=np.float64)
-    return positions
+    marker_size = float(cfg.get("marker_size_m", 0.19))
+    return positions, marker_size
 
 
 # ── Cálculo de erro de reprojeção ─────────────────────────────────────────
@@ -97,7 +98,7 @@ def draw_overlay(frame, detected_ids, pose_valid, cam_pos, reproj_mean,
             color=(200, 180, 80))
         rp_color = (80, 220, 80) if reproj_mean < 3.0 else (60, 100, 255)
         put(f"Reprojeção: mean={reproj_mean:.1f}px  max={reproj_max:.1f}px  "
-            f"[{n_used} pts]", 4, color=rp_color)
+            f"[{n_used} mkr]", 4, color=rp_color)
 
         if len(history) >= 5:
             h_arr = np.array(history)
@@ -120,8 +121,9 @@ def main():
     args = parser.parse_args()
 
     OUT_DIR.mkdir(exist_ok=True)
-    known = load_marker_positions(YAML_PATH)
-    print(f"Marcadores conhecidos: {sorted(known)}")
+    known, marker_size_m = load_marker_positions(YAML_PATH)
+    marker_half = marker_size_m / 2.0
+    print(f"Marcadores conhecidos: {sorted(known)}  (tamanho={marker_size_m*100:.0f}cm)")
     print(f"Posição esperada da câmara: {CAM_EXPECTED}")
 
     # ── ArUco API ──────────────────────────────────────────────────────────
@@ -202,20 +204,34 @@ def main():
             if ids_raw is not None:
                 cv2.aruco.drawDetectedMarkers(frame, corners_list, ids_raw)
 
-            # ── solvePnP ──────────────────────────────────────────────────
+            # ── solvePnP com 4 cantos por marcador ────────────────────────
+            # Usar cantos em vez de centro elimina a ambiguidade de orientação:
+            # a ordem TL→TR→BR→BL impõe a "mão" correta e força câmara no lado certo.
             obj_pts: list[np.ndarray] = []
             img_pts: list[np.ndarray] = []
+            n_det_markers = 0
             for mid, corners in zip(detected_ids,
                                     [c[0] for c in corners_list]):
                 if mid in known:
-                    obj_pts.append(known[mid])
-                    img_pts.append(corners.mean(axis=0))
+                    cx, cy, cz = known[mid]
+                    h = marker_half
+                    # Marcadores na parede face −Y; cantos mundo (X=direita, Z=cima):
+                    # TL=(−h,+h), TR=(+h,+h), BR=(+h,−h), BL=(−h,−h) em X/Z
+                    world_corners = np.array([
+                        [cx - h, cy, cz + h],   # TL
+                        [cx + h, cy, cz + h],   # TR
+                        [cx + h, cy, cz - h],   # BR
+                        [cx - h, cy, cz - h],   # BL
+                    ], dtype=np.float64)
+                    obj_pts.extend(world_corners)
+                    img_pts.extend(corners.astype(np.float64))
+                    n_det_markers += 1
 
             pose_valid  = False
             cam_pos     = np.zeros(3)
             reproj_mean = reproj_max = 0.0
 
-            if len(obj_pts) >= MIN_MARKERS:
+            if n_det_markers >= MIN_MARKERS:
                 obj_arr = np.array(obj_pts, dtype=np.float64)
                 img_arr = np.array(img_pts, dtype=np.float64)
 
@@ -255,7 +271,7 @@ def main():
 
             # ── Overlay na frame ──────────────────────────────────────────
             draw_overlay(frame, detected_ids, pose_valid, cam_pos,
-                         reproj_mean, reproj_max, len(obj_pts), history)
+                         reproj_mean, reproj_max, n_det_markers, history)
 
             # ── Log no terminal a cada 2 s ────────────────────────────────
             now = time.time()
@@ -263,11 +279,11 @@ def main():
                 ids_str  = str(detected_ids) if detected_ids else "[]"
                 pts_info = f"obj_pts={len(obj_pts)}"
                 if pose_valid:
-                    print(f"[f={frame_count:05d}] ids={ids_str}  {pts_info}  "
+                    print(f"[f={frame_count:05d}] ids={ids_str}  mkr={n_det_markers}  "
                           f"cam=({cam_pos[0]:+.3f},{cam_pos[1]:+.3f},"
                           f"{cam_pos[2]:+.3f})  reproj={reproj_mean:.1f}px")
                 else:
-                    print(f"[f={frame_count:05d}] ids={ids_str}  {pts_info}  "
+                    print(f"[f={frame_count:05d}] ids={ids_str}  mkr={n_det_markers}  "
                           f"solvePnP=FALHOU")
                 last_log = now
 
