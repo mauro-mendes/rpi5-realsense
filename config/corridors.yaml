@@ -122,7 +122,7 @@ corridors:
 
     # Câmera fixa fora do U, deslocada para frente do arm1
     # Deve ficar acima de 1.8m para ver por cima da ilha
-    camera_x_m: 0.55         # 1.2m à esquerda do centro do U (x=1.75)
+    camera_x_m: 1.2          # alinhada com a face esquerda da ilha
     camera_z_min_m: 1.9      # mínimo para linha de visão passar acima da ilha
 
     walls:
