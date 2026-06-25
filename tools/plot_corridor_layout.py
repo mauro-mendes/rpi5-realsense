@@ -127,11 +127,18 @@ def draw_top_view(ax, c, name):
             (x1, y1), (x2, y2) = seg
             ax.plot([x1, x2], [y1, y2], color=col, lw=5, zorder=8,
                     solid_capstyle="butt")
-            # número grande no centro da parede
             mx, my = (x1+x2)/2, (y1+y2)/2
-            ax.text(mx, my - 0.15, lbl,
-                    ha="center", va="top", fontsize=9,
-                    color=col, fontweight="bold")
+            is_vertical = abs(x1 - x2) < 0.01
+            if is_vertical:
+                # parede vertical (Reto): label à direita, na arm2
+                ax.text(mx + 0.22, my, lbl,
+                        ha="left", va="center", fontsize=9,
+                        color=col, fontweight="bold")
+            else:
+                # parede horizontal (U, S): label abaixo, no turning space / extensão
+                ax.text(mx, my + 0.22, lbl,
+                        ha="center", va="top", fontsize=9,
+                        color=col, fontweight="bold")
 
     # ── seta de percurso ────────────────────────────────────
     pc   = PATH_COLOR.get(name, "#888")
@@ -160,17 +167,29 @@ def draw_top_view(ax, c, name):
                     arrowprops=dict(arrowstyle="-|>", **akw))
 
     # ── marcadores (XY no plano) ────────────────────────────
+    # mapeamento rápido: note do YAML → label curto para o gráfico
+    _wall_label = {
+        20: "ilha esq", 21: "ilha dir",
+        22: "fundo arm1", 23: "fundo arm2",
+        24: "ext. esq", 25: "ext. dir",
+    }
     for m in c["markers"]:
         mid     = m["id"]
         x, y, _ = m["pos"]
-        ax.plot(x, y, marker="s", ms=13, color=MARKER_COLOR,
-                markeredgecolor="white", markeredgewidth=1.4, zorder=5)
+        ax.plot(x, y, marker="s", ms=20, color=MARKER_COLOR,
+                markeredgecolor="white", markeredgewidth=1.8, zorder=5)
         ax.text(x, y, str(mid), ha="center", va="center",
-                fontsize=7, fontweight="bold", color="white", zorder=6)
-        side = "left" if x < W/2 else "right"
-        ox   = 0.14 if side == "left" else -0.14
-        ax.text(x+ox, y, f"ID {mid}", ha=side, va="center",
-                fontsize=7, color=MARKER_COLOR, fontweight="bold", zorder=6)
+                fontsize=9, fontweight="bold", color="white", zorder=6)
+        side = "left" if x <= W/2 else "right"
+        ox   = 0.20 if side == "left" else -0.20
+        ax.text(x + ox, y - 0.07, f"ID {mid}",
+                ha=side, va="top",
+                fontsize=7.5, color=MARKER_COLOR, fontweight="bold", zorder=6)
+        wlbl = _wall_label.get(mid, "")
+        if wlbl:
+            ax.text(x + ox, y + 0.07, wlbl,
+                    ha=side, va="bottom",
+                    fontsize=6.5, color=MARKER_COLOR, zorder=6)
 
     # ── câmera ──────────────────────────────────────────────
     cam_y = -0.55
