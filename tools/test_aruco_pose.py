@@ -227,18 +227,21 @@ def main():
 
                 n_inliers = len(inliers.flatten()) if (ok and inliers is not None) else 0
 
-                # fallback: solvePnP direto com todos os pontos
+                # fallback: solvePnP com chute inicial real (evita solução espelho)
                 if not ok or n_inliers < 4:
                     ok, rvec, tvec = cv2.solvePnP(
                         obj_arr, img_arr, K, dist,
+                        rvec_init, tvec_init, useExtrinsicGuess=True,
                         flags=cv2.SOLVEPNP_ITERATIVE)
                     idx = np.arange(len(obj_arr))
                 else:
                     idx = inliers.flatten()
-                    # refina com inliers
+                    # refina com inliers; se RANSAC deu solução espelho usa chute real
+                    rvec_seed = rvec_init if camera_world_pos(rvec, tvec)[2] < 0 else rvec
+                    tvec_seed = tvec_init if camera_world_pos(rvec, tvec)[2] < 0 else tvec
                     ok, rvec, tvec = cv2.solvePnP(
                         obj_arr[idx], img_arr[idx], K, dist,
-                        rvec, tvec, useExtrinsicGuess=True,
+                        rvec_seed, tvec_seed, useExtrinsicGuess=True,
                         flags=cv2.SOLVEPNP_ITERATIVE)
 
                 if ok:

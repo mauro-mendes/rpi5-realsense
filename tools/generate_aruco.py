@@ -26,12 +26,12 @@ MARKER_MM    = 190    # tamanho físico impresso
 
 # ── Descrição de cada marcador (para o label) ─────────────────────────────────
 MARKER_INFO = {
-    20: ("x=1.2, y=2.1", "ilha — canto esq (face inferior)"),
-    21: ("x=2.3, y=2.1", "ilha — canto dir (face inferior)"),
-    22: ("x=0.6, y=3.3", "parede fundo — sobre arm1"),
-    23: ("x=2.9, y=3.3", "parede fundo — sobre arm2"),
-    24: ("x=2.5, y=5.5", "extensão — fundo esq (arm2)"),
-    25: ("x=3.2, y=5.5", "extensão — fundo dir (arm2)"),
+    20: ("x=1.345, y=2.11", "ilha — canto esq (face inferior)"),
+    21: ("x=2.220, y=2.11", "ilha — canto dir (face inferior)"),
+    22: ("x=0.105, y=3.305", "parede fundo — sobre arm1"),
+    23: ("x=2.215, y=3.305", "parede fundo — sobre arm2"),
+    24: ("x=2.530, y=5.515", "extensão — fundo esq (arm2)"),
+    25: ("x=3.375, y=5.515", "extensão — fundo dir (arm2)"),
 }
 
 out_dir = Path(__file__).parent / "aruco_prints"
