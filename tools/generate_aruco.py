@@ -1,16 +1,20 @@
 """
 Generate printable A4 ArUco markers (DICT_4X4_50).
 
-Output: tools/aruco_prints/aruco_XX.png  (A4 at 300 Dpi, portrait)
-Marker is centered with white border. Print at 100% scale (no fit-to-page).
+Output:
+  tools/aruco_prints/aruco_XX.png  (A4 300 DPI, para conferir)
+  tools/aruco_prints/aruco_XX.pdf  (A4 PDF, para imprimir)
+
+Ao imprimir o PDF: tamanho real / 100% / sem ajustar à página.
+O marker impresso terá exatamente 190mm de lado.
 
 Usage:
-    pip install opencv-contrib-python   # PC only, if needed
     python tools/generate_aruco.py
 """
 import cv2
 import numpy as np
 from pathlib import Path
+from PIL import Image as PILImage
 
 # A4 portrait at 300 DPI
 A4_W_PX = 2480
@@ -53,9 +57,17 @@ for corridor, ids in IDS_BY_CORRIDOR.items():
         cv2.putText(canvas, label, (A4_W_PX // 2 - 400, A4_H_PX - 80),
                     cv2.FONT_HERSHEY_SIMPLEX, 2.5, 0, 5)
 
-        fname = out_dir / f"aruco_{marker_id:02d}_{corridor}.png"
-        cv2.imwrite(str(fname), canvas)
-        print(f"  {fname.name}")
+        png_path = out_dir / f"aruco_{marker_id:02d}_{corridor}.png"
+        cv2.imwrite(str(png_path), canvas)
 
-print(f"\nDone. Print all files at 100% scale (no fit-to-page).")
-print(f"Physical marker size: {MARKER_SIZE_MM}mm — use this value in corridors.yaml")
+        # PDF A4 a 300 DPI — imprimir em tamanho real (100%)
+        pdf_path = out_dir / f"aruco_{marker_id:02d}_{corridor}.pdf"
+        pil_img = PILImage.fromarray(canvas)
+        pil_img.save(str(pdf_path), "PDF", resolution=300)
+
+        print(f"  {png_path.name}  +  {pdf_path.name}")
+
+print(f"\nPDFs prontos em tools/aruco_prints/")
+print(f"Imprimir com: Adobe Reader / SumatraPDF / navegador")
+print(f"Opção: Tamanho real  |  100%  |  sem 'ajustar à página'")
+print(f"Tamanho físico do marker: {MARKER_SIZE_MM}mm")
