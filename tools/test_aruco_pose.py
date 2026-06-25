@@ -141,8 +141,10 @@ def main():
     pipeline = rs.pipeline()
     cfg_rs   = rs.config()
     cfg_rs.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+    cfg_rs.enable_stream(rs.stream.depth, 640, 480, rs.format.z16,  30)
     profile  = pipeline.start(cfg_rs)
-    print("[OK] Pipeline RealSense iniciado (640x480 @ 30fps)")
+    align    = rs.align(rs.stream.color)   # alinha depth com RGB
+    print("[OK] Pipeline RealSense iniciado (640x480 @ 30fps + depth alinhado)")
 
     intr = (profile.get_stream(rs.stream.color)
             .as_video_stream_profile().get_intrinsics())
@@ -181,12 +183,14 @@ def main():
     try:
         while True:
             try:
-                frames = pipeline.wait_for_frames(timeout_ms=5000)
+                frames  = pipeline.wait_for_frames(timeout_ms=5000)
             except RuntimeError as e:
                 print(f"[WARN] wait_for_frames timeout: {e}")
                 continue
 
-            color_f = frames.get_color_frame()
+            aligned = align.process(frames)
+            color_f = aligned.get_color_frame()
+            depth_f = aligned.get_depth_frame()
             if not color_f:
                 print("[WARN] frame de cor inválido — a ignorar")
                 continue
@@ -231,6 +235,26 @@ def main():
                     img_pts.extend(corners.astype(np.float64))
                     n_det_markers += 1
 
+            # ── Depth → posição da câmara sem ambiguidade ─────────────────
+            # Cada marcador + leitura de profundidade dá 1 estimativa de pos da câmara.
+            # Câmara horizontal → R=R_init exacto; depth resolve qual dos 2 lados.
+            depth_estimates: list[np.ndarray] = []
+            if depth_f and n_det_markers > 0:
+                for mid, corners in zip(detected_ids,
+                                        [c[0] for c in corners_list]):
+                    if mid not in known:
+                        continue
+                    px, py = corners.mean(axis=0)
+                    d = depth_f.get_distance(int(np.clip(px, 0, 639)),
+                                             int(np.clip(py, 0, 479)))
+                    if 0.3 < d < 12.0:
+                        p_cam = np.array(rs.rs2_deproject_pixel_to_point(
+                            intr, [float(px), float(py)], d))
+                        depth_estimates.append(known[mid] - R_init.T @ p_cam)
+
+            cam_from_depth = (np.median(depth_estimates, axis=0)
+                              if depth_estimates else None)
+
             pose_valid  = False
             cam_pos     = np.zeros(3)
             reproj_mean = reproj_max = 0.0
@@ -239,16 +263,19 @@ def main():
                 obj_arr = np.array(obj_pts, dtype=np.float64)
                 img_arr = np.array(img_pts, dtype=np.float64)
 
-                # ① EPnP global (sem chute inicial) → mais robusto contra mínimos locais
-                ok_e, rvec_e, tvec_e = cv2.solvePnP(
-                    obj_arr, img_arr, K, dist, flags=cv2.SOLVEPNP_EPNP)
-
-                if ok_e and camera_world_pos(rvec_e, tvec_e)[1] < 0:
-                    seed_rv, seed_tv = rvec_e, tvec_e   # EPnP deu lado correto (y<0)
+                # Seed: depth (sem ambiguidade) > EPnP > último seed válido
+                if cam_from_depth is not None:
+                    tvec_d   = (-R_init @ cam_from_depth.reshape(3, 1)).astype(np.float64)
+                    seed_rv, seed_tv = rvec_init, tvec_d
                 else:
-                    seed_rv, seed_tv = last_valid_rvec, last_valid_tvec  # seed auto-corrigível
+                    ok_e, rvec_e, tvec_e = cv2.solvePnP(
+                        obj_arr, img_arr, K, dist, flags=cv2.SOLVEPNP_EPNP)
+                    if ok_e and camera_world_pos(rvec_e, tvec_e)[1] < 0:
+                        seed_rv, seed_tv = rvec_e, tvec_e
+                    else:
+                        seed_rv, seed_tv = last_valid_rvec, last_valid_tvec
 
-                # ② Refina com LM a partir do seed
+                # Refina com LM a partir do seed
                 ok, rvec, tvec = cv2.solvePnP(
                     obj_arr, img_arr, K, dist,
                     seed_rv, seed_tv, useExtrinsicGuess=True,
@@ -283,13 +310,16 @@ def main():
             if now - last_log >= 2.0:
                 ids_str  = str(detected_ids) if detected_ids else "[]"
                 pts_info = f"obj_pts={len(obj_pts)}"
+                d_str = (f"depth=({cam_from_depth[0]:+.2f},"
+                         f"{cam_from_depth[1]:+.2f},{cam_from_depth[2]:+.2f})"
+                         if cam_from_depth is not None else "depth=N/A")
                 if pose_valid:
                     print(f"[f={frame_count:05d}] ids={ids_str}  mkr={n_det_markers}  "
                           f"cam=({cam_pos[0]:+.3f},{cam_pos[1]:+.3f},"
-                          f"{cam_pos[2]:+.3f})  reproj={reproj_mean:.1f}px")
+                          f"{cam_pos[2]:+.3f})  reproj={reproj_mean:.1f}px  {d_str}")
                 else:
                     print(f"[f={frame_count:05d}] ids={ids_str}  mkr={n_det_markers}  "
-                          f"solvePnP=FALHOU")
+                          f"solvePnP=FALHOU  {d_str}")
                 last_log = now
 
             # ── Janela / headless ─────────────────────────────────────────
