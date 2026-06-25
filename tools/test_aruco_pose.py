@@ -234,40 +234,48 @@ def main():
             if n_det_markers >= MIN_MARKERS:
                 obj_arr = np.array(obj_pts, dtype=np.float64)
                 img_arr = np.array(img_pts, dtype=np.float64)
+                idx     = np.arange(len(obj_arr))
 
-                # RANSAC relaxado: 20px para aceitar erros de medição do YAML
-                ok, rvec, tvec, inliers = cv2.solvePnPRansac(
+                # Tenta RANSAC; aceita só se câmara ficar do lado correto (y < 0)
+                ok_r, rvec_r, tvec_r, inliers_r = cv2.solvePnPRansac(
                     obj_arr, img_arr, K, dist,
                     iterationsCount=500, reprojectionError=20.0,
                     confidence=0.99, flags=cv2.SOLVEPNP_ITERATIVE)
 
-                n_inliers = len(inliers.flatten()) if (ok and inliers is not None) else 0
+                ransac_ok = (ok_r and inliers_r is not None
+                             and len(inliers_r.flatten()) >= 4
+                             and camera_world_pos(rvec_r, tvec_r)[1] < 0)
 
-                # fallback: solvePnP com chute inicial real (evita solução espelho)
-                if not ok or n_inliers < 4:
+                if ransac_ok:
+                    idx = inliers_r.flatten()
+                    ok, rvec, tvec = cv2.solvePnP(
+                        obj_arr[idx], img_arr[idx], K, dist,
+                        rvec_r, tvec_r, useExtrinsicGuess=True,
+                        flags=cv2.SOLVEPNP_ITERATIVE)
+                else:
+                    # RANSAC falhou ou deu câmara no lado errado (y>0): força chute real
                     ok, rvec, tvec = cv2.solvePnP(
                         obj_arr, img_arr, K, dist,
                         rvec_init, tvec_init, useExtrinsicGuess=True,
                         flags=cv2.SOLVEPNP_ITERATIVE)
-                    idx = np.arange(len(obj_arr))
-                else:
-                    idx = inliers.flatten()
-                    # refina com inliers; se RANSAC deu solução espelho usa chute real
-                    rvec_seed = rvec_init if camera_world_pos(rvec, tvec)[2] < 0 else rvec
-                    tvec_seed = tvec_init if camera_world_pos(rvec, tvec)[2] < 0 else tvec
-                    ok, rvec, tvec = cv2.solvePnP(
-                        obj_arr[idx], img_arr[idx], K, dist,
-                        rvec_seed, tvec_seed, useExtrinsicGuess=True,
-                        flags=cv2.SOLVEPNP_ITERATIVE)
 
                 if ok:
-                    pose_valid  = True
-                    cam_pos     = camera_world_pos(rvec, tvec)
-                    reproj_mean, reproj_max = reprojection_error(
-                        obj_arr[idx], img_arr[idx], rvec, tvec, K, dist)
-                    history.append(cam_pos.copy())
-                    if len(history) > HISTORY_LEN:
-                        history.pop(0)
+                    proposed = camera_world_pos(rvec, tvec)
+                    # Sanity: câmara deve estar fora do corredor (y<0) e acima do chão
+                    if proposed[1] < 0 and proposed[2] > 0.3:
+                        pose_valid  = True
+                        cam_pos     = proposed
+                        reproj_mean, reproj_max = reprojection_error(
+                            obj_arr[idx], img_arr[idx], rvec, tvec, K, dist)
+                        history.append(cam_pos.copy())
+                        if len(history) > HISTORY_LEN:
+                            history.pop(0)
+                    elif len(history) > 0:
+                        # Pose inválida: usa última boa do histórico
+                        pose_valid = True
+                        cam_pos    = history[-1].copy()
+                        print(f"[WARN f={frame_count:05d}] pose y={proposed[1]:+.2f} inválida"
+                              f" — usando última boa")
 
             # ── Overlay na frame ──────────────────────────────────────────
             draw_overlay(frame, detected_ids, pose_valid, cam_pos,
