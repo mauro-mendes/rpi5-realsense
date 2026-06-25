@@ -27,8 +27,11 @@
 #   Origem: canto externo esquerdo da entrada (x=0, y=0)
 #   +X = direita  |  +Y = para dentro do corredor  |  +Z = cima
 #
-# Câmera RealSense D435i: fixa em (x=1.90, y=-2.30, z=1.98)  [medido fisicamente]
-# ArUcos IDs 20–25: pos=[x,y,z] onde x/y medidos ao centro e z medido à base + marker_half=0.095m
+# Câmera RealSense D435i: fixa em (x=1.60, y=-2.30, z=1.98)
+#   x_tape=1.90m medido da parede DIREITA → x_design = 3.5-1.90 = 1.60m da parede esquerda
+# ArUcos IDs 20–25: pos=[x,y,z]
+#   x medido da parede DIREITA e corrigido: x_design = 3.5 - x_medido
+#   y medido ao centro, z medido à base + marker_half=0.095m
 
 marker_size_m: 0.19
 
@@ -43,7 +46,7 @@ shared_geometry:
   extension_length_m: 2.2   # extensão abaixo do U (arm2 apenas)
   total_depth_m: 5.5        # profundidade total (u_depth + extension)
   wall_height_m: 1.8
-  camera_x_m: 1.9
+  camera_x_m: 1.60
   camera_y_m: -2.30
   camera_z_m: 1.98
 
@@ -86,27 +89,27 @@ corridors:
     # Marcadores no topo das paredes (base a 1.8m, centro a 1.895m)
     markers:
       - id: 20
-        pos: [1.345, 2.11, 1.705]
+        pos: [2.155, 2.11, 1.705]
         facing: S
         note: "topo da ilha, canto esquerdo (face inferior)"
       - id: 21
-        pos: [2.220, 2.11, 1.705]
+        pos: [1.280, 2.11, 1.705]
         facing: S
         note: "topo da ilha, canto direito (face inferior)"
       - id: 22
-        pos: [0.105, 3.305, 1.970]
+        pos: [3.395, 3.305, 1.970]
         facing: S
         note: "topo da parede do fundo, sobre arm1"
       - id: 23
-        pos: [2.215, 3.305, 1.970]
+        pos: [1.285, 3.305, 1.970]
         facing: S
         note: "topo da parede do fundo, sobre arm2"
       - id: 24
-        pos: [2.530, 5.515, 2.295]
+        pos: [0.970, 5.515, 2.295]
         facing: S
         note: "parede do fundo da extensão, lado esquerdo (arm2)"
       - id: 25
-        pos: [3.375, 5.515, 2.295]
+        pos: [0.125, 5.515, 2.295]
         facing: S
         note: "parede do fundo da extensão, lado direito (arm2)"
 
@@ -153,27 +156,27 @@ corridors:
     # Mesmos marcadores físicos do U_esq + 2 novos no fundo da extensão
     markers:
       - id: 20
-        pos: [1.345, 2.11, 1.705]
+        pos: [2.155, 2.11, 1.705]
         facing: S
         note: "topo da ilha, canto esquerdo (face inferior)"
       - id: 21
-        pos: [2.220, 2.11, 1.705]
+        pos: [1.280, 2.11, 1.705]
         facing: S
         note: "topo da ilha, canto direito (face inferior)"
       - id: 22
-        pos: [0.105, 3.305, 1.970]
+        pos: [3.395, 3.305, 1.970]
         facing: S
         note: "topo da parede do fundo, sobre arm1"
       - id: 23
-        pos: [2.215, 3.305, 1.970]
+        pos: [1.285, 3.305, 1.970]
         facing: S
         note: "topo da parede do fundo, sobre arm2"
       - id: 24
-        pos: [2.530, 5.515, 2.295]
+        pos: [0.970, 5.515, 2.295]
         facing: S
         note: "parede do fundo da extensão, lado esquerdo (arm2)"
       - id: 25
-        pos: [3.375, 5.515, 2.295]
+        pos: [0.125, 5.515, 2.295]
         facing: S
         note: "parede do fundo da extensão, lado direito (arm2)"
 
@@ -237,26 +240,26 @@ corridors:
     # Mesmos marcadores físicos do U_esq + 2 novos no fundo da extensão
     markers:
       - id: 20
-        pos: [1.345, 2.11, 1.705]
+        pos: [2.155, 2.11, 1.705]
         facing: S
         note: "topo da ilha, canto esquerdo (face inferior)"
       - id: 21
-        pos: [2.220, 2.11, 1.705]
+        pos: [1.280, 2.11, 1.705]
         facing: S
         note: "topo da ilha, canto direito (face inferior)"
       - id: 22
-        pos: [0.105, 3.305, 1.970]
+        pos: [3.395, 3.305, 1.970]
         facing: S
         note: "topo da parede do fundo, sobre arm1"
       - id: 23
-        pos: [2.215, 3.305, 1.970]
+        pos: [1.285, 3.305, 1.970]
         facing: S
         note: "topo da parede do fundo, sobre arm2"
       - id: 24
-        pos: [2.530, 5.515, 2.295]
+        pos: [0.970, 5.515, 2.295]
         facing: S
         note: "parede do fundo da extensão, lado esquerdo (arm2)"
       - id: 25
-        pos: [3.375, 5.515, 2.295]
+        pos: [0.125, 5.515, 2.295]
         facing: S
         note: "parede do fundo da extensão, lado direito (arm2)"

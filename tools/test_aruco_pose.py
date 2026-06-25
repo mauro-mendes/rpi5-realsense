@@ -41,7 +41,7 @@ DICT_TYPE     = cv2.aruco.DICT_4X4_50
 MIN_MARKERS   = 4          # mínimo para solvePnP
 HISTORY_LEN   = 30         # frames para cálculo de estabilidade
 LOCK_AFTER    = 3          # poses válidas consecutivas para fixar pose da câmara
-CAM_EXPECTED  = np.array([1.90, -2.30, 1.98])  # medido em fita métrica (x,y,z) em metros
+CAM_EXPECTED  = np.array([1.60, -2.30, 1.98])  # x=3.5-1.90 (medido da parede direita)
 
 # ── Carrega marcadores do YAML (IDs únicos) e tamanho físico ─────────────
 def load_marker_positions(yaml_path: Path) -> tuple[dict[int, np.ndarray], float]:
