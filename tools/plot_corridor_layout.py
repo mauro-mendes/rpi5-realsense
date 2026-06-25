@@ -206,11 +206,14 @@ def draw_side_view(ax, c):
         ax.text(mx, mz, str(mid), ha="center", va="center",
                 fontsize=6, fontweight="bold", color="white", zorder=6)
 
-    # câmera
-    ax.plot(cam_x, cam_z, marker="<", ms=14, color=CAMERA_COLOR,
+    # câmera — label acima para evitar sobreposição com markers
+    ax.plot(cam_x, cam_z, marker=">", ms=14, color=CAMERA_COLOR,
             markeredgecolor="white", markeredgewidth=1.2, zorder=6)
-    ax.text(cam_x - 0.1, cam_z, "Câmera", ha="right", va="center",
-            fontsize=8, color=CAMERA_COLOR, fontweight="bold")
+    ax.annotate(f"Câmera\nx={cam_x:.2g} m",
+                xy=(cam_x, cam_z), xytext=(cam_x - 0.5, cam_z + 0.22),
+                ha="center", va="bottom",
+                fontsize=8, color=CAMERA_COLOR, fontweight="bold",
+                arrowprops=dict(arrowstyle="-|>", color=CAMERA_COLOR, lw=0.9))
 
     # linhas de visão câmera → markers
     for m in c["markers"]:
@@ -219,30 +222,37 @@ def draw_side_view(ax, c):
                 lw=1, alpha=0.6, linestyle="--", zorder=4)
 
     # bola verde (pessoa na arm1 e arm2, bola acima da parede)
-    ball_z = wh + 0.15   # bola ligeiramente acima das paredes
+    ball_z = wh + 0.15
     for bx, label in [(cw/2, "bola\n(arm1)"), (W-cw/2, "bola\n(arm2)")]:
         ax.plot(bx, ball_z, "o", ms=14, color=BALL_COLOR,
                 markeredgecolor="white", markeredgewidth=1.2, zorder=5)
         ax.text(bx, ball_z + 0.08, label, ha="center", va="bottom",
                 fontsize=7, color=BALL_COLOR, fontweight="bold")
-        # linha de visão câmera → bola
         ax.plot([cam_x, bx], [cam_z, ball_z], color=BALL_COLOR,
                 lw=1, alpha=0.5, linestyle=":", zorder=4)
 
+    # labels de entrada/saída no pé da elevação
+    ax.text(cw/2,   -0.08, "✕ entrada\n(arm1)", ha="center", va="top",
+            fontsize=7, color="#333")
+    ax.text(W-cw/2, -0.08, "• saída\n(arm2)",   ha="center", va="top",
+            fontsize=7, color="#333")
+
     # cotas de altura
-    dim_v(ax, 0, wh,   -0.18, f"{wh:.1f} m\n(parede)")
-    dim_v(ax, 0, mk_z, W+0.18, f"{mk_z:.3g} m\n(marker)", left=False)
-    dim_v(ax, 0, cam_z, cam_x - 0.35, f"≥{cam_z:.2g} m\n(câmera)")
+    # após invert_xaxis: x negativo → direita, x grande → esquerda
+    dim_v(ax, 0, wh,   -0.18, f"{wh:.1f} m\n(parede)")          # direita
+    dim_v(ax, 0, mk_z, W+0.18, f"{mk_z:.3g} m\n(marker)", left=False)  # esquerda
+    dim_v(ax, 0, cam_z, cam_x + 0.4, f"≥{cam_z:.2g} m\n(câmera)", left=False)  # esquerda da câmera
 
     # linha de referência da parede (pontilhada)
     ax.axhline(wh, color=WALL_COLOR, lw=1, linestyle="--", alpha=0.5)
-    ax.text(W + 0.05, wh, f"topo\n{wh} m", va="center",
-            fontsize=7, color=WALL_COLOR)
+    ax.text(-0.05, wh, f"topo\n{wh} m", va="center",
+            fontsize=7, color=WALL_COLOR, ha="right")
 
     ax.set_xlim(-0.55, W + 0.65)
-    ax.set_ylim(-0.15, cam_z + 0.55)
+    ax.set_ylim(-0.45, cam_z + 0.55)
+    ax.invert_xaxis()   # X positivo → direita da câmera (braço de entrada arm1)
     ax.set_title("Vista frontal (elevação)", fontsize=11, fontweight="bold")
-    ax.set_xlabel("X (m)", fontsize=9)
+    ax.set_xlabel("X (m)  [eixo espelhado: arm1 à direita, arm2 à esquerda]", fontsize=9)
     ax.set_ylabel("Z — altura (m)", fontsize=9)
     ax.grid(True, alpha=0.2, lw=0.5)
 
