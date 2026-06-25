@@ -62,7 +62,7 @@ else:
     BALL_HSV_LOW  = np.array([35,  50,  50], dtype=np.uint8)
     BALL_HSV_HIGH = np.array([85, 255, 255], dtype=np.uint8)
 
-MIN_BALL_AREA = 300      # px² — reduzir se a bola aparecer pequena na imagem
+MIN_BALL_AREA = 80       # px² — bola 150mm: ~254px² a 5m, ~177px² a 6m
 RECORD_HZ     = 10       # pontos/segundo a gravar (máximo)
 
 # ── Rotação da câmara (horizontal, apontada em +Y) ───────────────────────────
@@ -129,7 +129,7 @@ def detect_ball(frame_bgr):
     if cv2.contourArea(best) < MIN_BALL_AREA:
         return None
     (bx, by), radius = cv2.minEnclosingCircle(best)
-    if radius < 6:
+    if radius < 4:
         return None
     return int(bx), int(by), int(radius), mask
 
