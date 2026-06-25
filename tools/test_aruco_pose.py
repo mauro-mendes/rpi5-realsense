@@ -39,7 +39,7 @@ OUT_DIR       = Path(__file__).parent.parent / "output"
 DICT_TYPE     = cv2.aruco.DICT_4X4_50
 MIN_MARKERS   = 4          # mínimo para solvePnP
 HISTORY_LEN   = 30         # frames para cálculo de estabilidade
-CAM_EXPECTED  = np.array([1.90, -2.30, 1.98])  # posição medida da câmara (m)
+CAM_EXPECTED  = np.array([1.98, -3.20, 2.14])  # posição empírica (mínimo de reprojeção)
 
 # ── Carrega marcadores do YAML (IDs únicos) e tamanho físico ─────────────
 def load_marker_positions(yaml_path: Path) -> tuple[dict[int, np.ndarray], float]:
@@ -160,13 +160,21 @@ def main():
         cv2.resizeWindow(WIN, 960, 540)
         print("[OK] Janela criada — aguarda primeiro frame...")
 
-    # ── Chute inicial: câmara olha em +Y (corredor), +Z = cima ───────────────
-    # R mapeia mundo→câmara: Z_cam=+Y_mundo, Y_cam=-Z_mundo, X_cam=+X_mundo
-    R_init = np.array([[1, 0,  0],
-                       [0, 0, -1],
-                       [0, 1,  0]], dtype=np.float64)
+    # ── Chute inicial: câmara olha em +Y (corredor), levemente inclinada para baixo ──
+    # Inclinação descendente ~10°: Z_cam aponta em direção (0, sin10°, -cos10°) no mundo
+    import math as _math
+    _tilt = _math.radians(10)          # inclinação para baixo estimada
+    _c, _s = _math.cos(_tilt), _math.sin(_tilt)
+    # R mapeia mundo→câmara
+    R_init = np.array([[1,  0,    0   ],
+                       [0,  _s,  -_c  ],   # Y_cam: componente de altura (−Z_mundo)
+                       [0,  _c,   _s  ]], dtype=np.float64)  # Z_cam: eixo ótico
     rvec_init, _ = cv2.Rodrigues(R_init)
     tvec_init    = (-R_init @ CAM_EXPECTED.reshape(3, 1)).astype(np.float64)
+
+    # Seed auto-corrigível: actualizado sempre que encontra pose válida
+    last_valid_rvec = rvec_init.copy()
+    last_valid_tvec = tvec_init.copy()
 
     history: list[np.ndarray] = []
     save_idx     = 0
@@ -234,48 +242,41 @@ def main():
             if n_det_markers >= MIN_MARKERS:
                 obj_arr = np.array(obj_pts, dtype=np.float64)
                 img_arr = np.array(img_pts, dtype=np.float64)
-                idx     = np.arange(len(obj_arr))
 
-                # Tenta RANSAC; aceita só se câmara ficar do lado correto (y < 0)
-                ok_r, rvec_r, tvec_r, inliers_r = cv2.solvePnPRansac(
-                    obj_arr, img_arr, K, dist,
-                    iterationsCount=500, reprojectionError=20.0,
-                    confidence=0.99, flags=cv2.SOLVEPNP_ITERATIVE)
+                # ① EPnP global (sem chute inicial) → mais robusto contra mínimos locais
+                ok_e, rvec_e, tvec_e = cv2.solvePnP(
+                    obj_arr, img_arr, K, dist, flags=cv2.SOLVEPNP_EPNP)
 
-                ransac_ok = (ok_r and inliers_r is not None
-                             and len(inliers_r.flatten()) >= 4
-                             and camera_world_pos(rvec_r, tvec_r)[1] < 0)
-
-                if ransac_ok:
-                    idx = inliers_r.flatten()
-                    ok, rvec, tvec = cv2.solvePnP(
-                        obj_arr[idx], img_arr[idx], K, dist,
-                        rvec_r, tvec_r, useExtrinsicGuess=True,
-                        flags=cv2.SOLVEPNP_ITERATIVE)
+                if ok_e and camera_world_pos(rvec_e, tvec_e)[1] < 0:
+                    seed_rv, seed_tv = rvec_e, tvec_e   # EPnP deu lado correto (y<0)
                 else:
-                    # RANSAC falhou ou deu câmara no lado errado (y>0): força chute real
-                    ok, rvec, tvec = cv2.solvePnP(
-                        obj_arr, img_arr, K, dist,
-                        rvec_init, tvec_init, useExtrinsicGuess=True,
-                        flags=cv2.SOLVEPNP_ITERATIVE)
+                    seed_rv, seed_tv = last_valid_rvec, last_valid_tvec  # seed auto-corrigível
+
+                # ② Refina com LM a partir do seed
+                ok, rvec, tvec = cv2.solvePnP(
+                    obj_arr, img_arr, K, dist,
+                    seed_rv, seed_tv, useExtrinsicGuess=True,
+                    flags=cv2.SOLVEPNP_ITERATIVE)
 
                 if ok:
                     proposed = camera_world_pos(rvec, tvec)
-                    # Sanity: câmara deve estar fora do corredor (y<0) e acima do chão
+                    # Reproj sempre em todos os 24 pontos (não só inliers)
+                    reproj_mean, reproj_max = reprojection_error(
+                        obj_arr, img_arr, rvec, tvec, K, dist)
+
                     if proposed[1] < 0 and proposed[2] > 0.3:
-                        pose_valid  = True
-                        cam_pos     = proposed
-                        reproj_mean, reproj_max = reprojection_error(
-                            obj_arr[idx], img_arr[idx], rvec, tvec, K, dist)
+                        pose_valid      = True
+                        cam_pos         = proposed
+                        last_valid_rvec = rvec.copy()   # actualiza seed para próximo frame
+                        last_valid_tvec = tvec.copy()
                         history.append(cam_pos.copy())
                         if len(history) > HISTORY_LEN:
                             history.pop(0)
                     elif len(history) > 0:
-                        # Pose inválida: usa última boa do histórico
                         pose_valid = True
                         cam_pos    = history[-1].copy()
-                        print(f"[WARN f={frame_count:05d}] pose y={proposed[1]:+.2f} inválida"
-                              f" — usando última boa")
+                        print(f"[WARN f={frame_count:05d}] pose inválida y={proposed[1]:+.2f}"
+                              f" reproj={reproj_mean:.1f}px — usando última boa")
 
             # ── Overlay na frame ──────────────────────────────────────────
             draw_overlay(frame, detected_ids, pose_valid, cam_pos,
