@@ -27,7 +27,7 @@
 #   Origem: canto externo esquerdo da entrada (x=0, y=0)
 #   +X = direita  |  +Y = para dentro do corredor  |  +Z = cima
 #
-# Câmera RealSense D435i: fixa em (x=1.2, y=-0.55, z≥1.9)
+# Câmera RealSense D435i: fixa em (x=1.90, y=-2.30, z=1.98)  [medido fisicamente]
 # ArUcos IDs 20–25: mesmos marcadores físicos para os 3 corredores (24-25 no fundo y=5.5)
 
 marker_size_m: 0.19
@@ -43,8 +43,9 @@ shared_geometry:
   extension_length_m: 2.2   # extensão abaixo do U (arm2 apenas)
   total_depth_m: 5.5        # profundidade total (u_depth + extension)
   wall_height_m: 1.8
-  camera_x_m: 1.2
-  camera_z_min_m: 1.9
+  camera_x_m: 1.9
+  camera_y_m: -2.30
+  camera_z_m: 1.98
 
 corridors:
 

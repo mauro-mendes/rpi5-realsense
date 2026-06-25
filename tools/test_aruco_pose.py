@@ -39,7 +39,7 @@ OUT_DIR       = Path(__file__).parent.parent / "output"
 DICT_TYPE     = cv2.aruco.DICT_4X4_50
 MIN_MARKERS   = 4          # mínimo para solvePnP
 HISTORY_LEN   = 30         # frames para cálculo de estabilidade
-CAM_EXPECTED  = np.array([1.20, -0.55, 1.90])  # posição esperada (m)
+CAM_EXPECTED  = np.array([1.90, -2.30, 1.98])  # posição medida da câmara (m)
 
 # ── Carrega marcadores do YAML (IDs únicos) ────────────────────────────────
 def load_marker_positions(yaml_path: Path) -> dict[int, np.ndarray]:
@@ -157,6 +157,14 @@ def main():
         cv2.namedWindow(WIN, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(WIN, 960, 540)
         print("[OK] Janela criada — aguarda primeiro frame...")
+
+    # ── Chute inicial: câmara olha em +Y (corredor), +Z = cima ───────────────
+    # R mapeia mundo→câmara: Z_cam=+Y_mundo, Y_cam=-Z_mundo, X_cam=+X_mundo
+    R_init = np.array([[1, 0,  0],
+                       [0, 0, -1],
+                       [0, 1,  0]], dtype=np.float64)
+    rvec_init, _ = cv2.Rodrigues(R_init)
+    tvec_init    = (-R_init @ CAM_EXPECTED.reshape(3, 1)).astype(np.float64)
 
     history: list[np.ndarray] = []
     save_idx     = 0

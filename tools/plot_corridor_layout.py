@@ -192,7 +192,7 @@ def draw_top_view(ax, c, name):
                     fontsize=6.5, color=MARKER_COLOR, zorder=6)
 
     # ── câmera ──────────────────────────────────────────────
-    cam_y = -0.55
+    cam_y = c.get("camera_y_m", -0.55)
     ax.plot(cam_x, cam_y, marker="^", ms=15, color=CAMERA_COLOR,
             markeredgecolor="white", markeredgewidth=1.4, zorder=5)
     ax.text(cam_x, cam_y - 0.13, f"Câmera  x={cam_x:.2g} m",
@@ -258,7 +258,7 @@ def draw_side_view(ax, c):
     wh     = c["wall_height_m"]
     ms     = c.get("marker_size_m", 0.19)
     cam_x  = c.get("camera_x_m", cw/2)
-    cam_z  = c.get("camera_z_min_m", 1.9)
+    cam_z  = c.get("camera_z_m", c.get("camera_z_min_m", 1.9))
     # z alturas reais medidas (podem variar por marcador)
     unique_z = sorted({m["pos"][2] for m in c["markers"]})
 
