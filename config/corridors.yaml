@@ -1,144 +1,223 @@
-# Corridor definitions for ArUco-based localization
+# Corridor definitions — ArUco-based localization + ground-truth tracking
 #
-# Coordinate system (per corridor):
-#   Origin = start position (where user begins)
-#   +x = right
-#   +y = forward (direction user walks first)
-#   All values in meters
+# ESTRUTURA FÍSICA ÚNICA com parede móvel em 3 posições:
 #
-# marker_size_m: physical side length of printed marker (190mm = 0.19m)
-# Each marker: id, position (x,y) in corridor coords, facing direction
-#   facing: direction the marker FACES (i.e. toward approaching user)
-#   N=north(+y), S=south(-y), E=east(+x), W=west(-x)
+#   ←──────── 3.5m ─────────→
+#   +────────+──────+────────+  y=0   ← câmera (fora, y=-0.55)
+#   |  arm1  |      |  arm2  |
+#   |  1.2m  | ilha |  1.2m  |  2.1m  (com ilha)
+#   |        | 1.1m |        |
+#   |        |      |        |
+#   +        +──────+        +  y=2.1  ← base da ilha
+#   |                        |
+#   |   turning space 1.2m   |
+#   |                        |
+#   +───────────────+        |  y=3.3  ← parede fixa (x=0..2.3 apenas)
+#                   |  arm2  |
+#                   | extensão|  2.2m
+#                   |  1.2m  |
+#                   +────────+  y=5.5  ← parede fixa (fim reto e S)
 #
-# NOTE: lengths marked "measure" must be filled in after building the corridors.
-# Widths are confirmed: reto=1.4m, S and U=1.2m.
+# Posições da parede móvel (1.2m de largura):
+#   Pos 1 → y=3.3, x=2.3..3.5 : fecha extensão   → corredor U
+#   Pos 2 → y=2.7, x=0.0..1.2 : fecha arm1       → corredor Reto
+#   Pos 3 → y=2.1, x=0.0..1.2 : fecha arm1 na base da ilha → corredor S
+#
+# Sistema de coordenadas (compartilhado pelos 3 corredores):
+#   Origem: canto externo esquerdo da entrada (x=0, y=0)
+#   +X = direita  |  +Y = para dentro do corredor  |  +Z = cima
+#
+# Câmera RealSense D435i: fixa em (x=1.2, y=-0.55, z≥1.9)
+# ArUcos IDs 20–23: mesmos marcadores físicos para os 3 corredores
 
 marker_size_m: 0.19
 
+# Dimensões físicas compartilhadas (referência para todos os corredores)
+shared_geometry:
+  total_width_m: 3.5
+  corridor_width_m: 1.2
+  island_width_m: 1.1
+  island_length_m: 2.1
+  turning_space_m: 1.2
+  u_depth_m: 3.3            # profundidade até parede do fundo do U
+  extension_length_m: 2.2   # extensão abaixo do U (arm2 apenas)
+  total_depth_m: 5.5        # profundidade total (u_depth + extension)
+  wall_height_m: 1.8
+  camera_x_m: 1.2
+  camera_z_min_m: 1.9
+
 corridors:
 
-  reto:
-    description: "Corredor reto"
-    # Layout (top view, user walks S→N):
-    #
-    #   |   [ID 1]   |   <- end wall, marker faces S
-    #   |            |
-    #   |            |
-    #   |   [ID 0]   |   <- start wall, marker faces N
-    #
-    width_m: 1.4
-    length_m: 4.0        # measure after building
-    walls:
-      - [[-0.7, 0.0], [-0.7, 4.0]]   # left wall
-      - [[ 0.7, 0.0], [ 0.7, 4.0]]   # right wall
-    start: [0.0, 0.3]
-    goal:  [0.0, 3.7]
-    markers:
-      - id: 0
-        x: 0.0
-        y: 0.0
-        facing: N
-        note: "start wall"
-      - id: 1
-        x: 0.0
-        y: 4.0          # update to actual length
-        facing: S
-        note: "end wall"
-
-  S_esq_dir:
-    description: "Corredor S: curva esquerda depois direita"
-    # Layout (top view):
-    #
-    #   | [13] |
-    #   |      |____
-    #   | [12]  [11]|
-    #          |    |
-    #          |[10]|  <- start
-    #
-    # Seg 1: going N  (x=0,        y=0..seg1)
-    # Seg 2: going W  (y=seg1,     x=0..-seg2)
-    # Seg 3: going N  (x=-seg2,    y=seg1..seg1+seg3)
-    #
-    width_m: 1.2
-    seg1_len_m: 2.0      # measure after building
-    seg2_len_m: 2.0      # measure after building
-    seg3_len_m: 2.0      # measure after building
-    walls: []            # filled in by corridor_tracker.py from seg lengths
-    start: [0.0,  0.3]
-    goal:  [-2.0, 4.3]   # update: [-seg2, seg1+seg3-0.3]
-    markers:
-      - id: 10
-        x:  0.0
-        y:  0.0
-        facing: N
-        note: "start wall"
-      - id: 11
-        x:  0.0
-        y:  2.0          # update to seg1_len
-        facing: N
-        note: "right wall at first corner (before turn)"
-      - id: 12
-        x: -2.0          # update to -seg2_len
-        y:  2.0          # update to seg1_len
-        facing: E
-        note: "left wall at first corner (after turn)"
-      - id: 13
-        x: -2.0          # update to -seg2_len
-        y:  4.0          # update to seg1_len + seg3_len
-        facing: S
-        note: "end wall"
-
   U_esq:
-    description: "Corredor U: ilha central, câmera fixa na abertura"
+    description: "Corredor U — parede móvel posição 1 (fecha extensão em arm2)"
     #
-    # Layout visto de cima (câmera fora, olhando para +Y):
+    # Percurso: ✕arm1↓ (y=0→3.3) → turning → ↑arm2• (y=3.3→0)
+    # Parede móvel fecha o acesso à extensão em arm2 (y=3.3, x=2.3..3.5)
     #
-    #  câmera
-    #    ↓
-    #  ✕              •        y=0  (entradas)
-    #  |      |¯¯¯¯¯|      |
-    #  | arm1 |ilha | arm2 |
-    #  | 1.2m |1.1m | 1.2m |   2.1m  (seção paralela = 3.3-1.2)
-    #  |      |_____|      |
-    #  |   (viragem 1.2m)  |   1.2m  (espaço de viragem)
-    #  |___________________|        y=3.3 (parede do fundo)
-    #  ←──────── 3.5m ──────→
-    #
-    # Origem: canto externo esquerdo da entrada (x=0, y=0)
-    # +X: direita  |  +Y: para dentro do U
-    #
-    # Marcadores (na parede que ENFRENTA a câmera, ou seja, face -Y):
-    #   ID 20 e 21: face inferior da ilha (y=2.1), visíveis por arm1/arm2
-    #   ID 22 e 23: parede do fundo (y=3.3), visíveis por arm1/arm2
-    #
-    total_width_m: 3.5       # largura externa total
-    total_height_m: 3.3      # altura externa total
-    corridor_width_m: 1.2    # largura interna do corredor (igual em todo lugar)
-    island_width_m: 1.1      # largura da ilha central (= 3.5 - 2*1.2)
-    island_length_m: 2.1     # comprimento da ilha (= 3.3 - 1.2)
-    turning_space_m: 1.2     # espaço de viragem no fundo (= corridor_width_m)
-    wall_height_m: 1.8       # altura das paredes de papelão
+    total_width_m: 3.5
+    u_depth_m: 3.3
+    extension_length_m: 2.2
+    corridor_width_m: 1.2
+    island_width_m: 1.1
+    island_length_m: 2.1
+    turning_space_m: 1.2
+    wall_height_m: 1.8
+    camera_x_m: 1.2
+    camera_z_min_m: 1.9
 
-    # Câmera fixa fora do U, deslocada para frente do arm1
-    # Deve ficar acima de 1.8m para ver por cima da ilha
-    camera_x_m: 1.2          # alinhada com a face esquerda da ilha
-    camera_z_min_m: 1.9      # mínimo para linha de visão passar acima da ilha
-
+    # Paredes fixas + parede móvel na posição 1
     walls:
-      - [[0.0, 0.0], [0.0, 3.3]]    # parede externa esquerda
-      - [[0.0, 3.3], [3.5, 3.3]]    # parede do fundo
-      - [[3.5, 3.3], [3.5, 0.0]]    # parede externa direita
+      - [[0.0, 0.0], [0.0, 3.3]]    # parede externa esquerda (arm1)
+      - [[3.5, 0.0], [3.5, 3.3]]    # parede externa direita (arm2)
+      - [[0.0, 3.3], [3.5, 3.3]]    # parede do fundo (inclui parede móvel pos 1)
       - [[1.2, 0.0], [1.2, 2.1]]    # ilha: face esquerda
-      - [[1.2, 2.1], [2.3, 2.1]]    # ilha: face inferior (enfrenta câmera)
+      - [[1.2, 2.1], [2.3, 2.1]]    # ilha: face inferior
       - [[2.3, 2.1], [2.3, 0.0]]    # ilha: face direita
 
-    start: [0.6, 0.3]    # centro do arm1, 0.3m da entrada
-    goal:  [2.9, 0.3]    # centro do arm2, 0.3m da saída
+    movable_wall:
+      position: 1
+      segment: [[2.3, 3.3], [3.5, 3.3]]
+      note: "fecha arm2 na base do U, bloqueando acesso à extensão"
 
-    # Marcadores verticais no topo das paredes, base a 1.8m do chão.
-    # Centro do marker a 1.895m (= 1.8 + 0.19/2, marker_size=0.19m).
-    # Câmera acima de 1.9m vê por cima da ilha → todos visíveis.
+    start: [0.6, 0.3]    # ✕ centro arm1, 0.3m da entrada
+    goal:  [2.9, 0.3]    # •  centro arm2, 0.3m da saída
+
+    # Marcadores no topo das paredes (base a 1.8m, centro a 1.895m)
+    markers:
+      - id: 20
+        pos: [1.2, 2.1, 1.895]
+        facing: S
+        note: "topo da ilha, canto esquerdo (face inferior)"
+      - id: 21
+        pos: [2.3, 2.1, 1.895]
+        facing: S
+        note: "topo da ilha, canto direito (face inferior)"
+      - id: 22
+        pos: [0.6, 3.3, 1.895]
+        facing: S
+        note: "topo da parede do fundo, sobre arm1"
+      - id: 23
+        pos: [2.9, 3.3, 1.895]
+        facing: S
+        note: "topo da parede do fundo, sobre arm2"
+
+  reto_esq:
+    description: "Corredor reto — parede móvel posição 2 (fecha arm1, arm2 livre 5.5m)"
+    #
+    # Percurso: •arm2↓ direto (y=0 → y=5.5) = 5.5m em linha reta
+    # Entrada: centro arm2 (x=2.9, y=0) — mesma posição que saída do U
+    # Parede móvel fecha arm1 no turning space (y≈2.7, x=0..1.2)
+    # Parede fixa no fundo: y=5.5 (fim da extensão)
+    #
+    total_width_m: 3.5
+    u_depth_m: 3.3
+    extension_length_m: 2.2
+    total_depth_m: 5.5
+    corridor_width_m: 1.2
+    island_width_m: 1.1
+    island_length_m: 2.1
+    turning_space_m: 1.2
+    wall_height_m: 1.8
+    camera_x_m: 1.2
+    camera_z_min_m: 1.9
+    length_m: 5.5
+
+    # Paredes fixas + parede móvel na posição 2
+    walls:
+      - [[0.0, 0.0], [0.0, 3.3]]    # parede externa esquerda
+      - [[3.5, 0.0], [3.5, 5.5]]    # parede externa direita (arm2 + extensão)
+      - [[0.0, 3.3], [2.3, 3.3]]    # parede do fundo esquerda (fixa, x=0..2.3)
+      - [[2.3, 3.3], [2.3, 5.5]]    # parede esquerda da extensão
+      - [[2.3, 5.5], [3.5, 5.5]]    # parede do fundo da extensão (fim)
+      - [[1.2, 0.0], [1.2, 2.1]]    # ilha: face esquerda
+      - [[1.2, 2.1], [2.3, 2.1]]    # ilha: face inferior
+      - [[2.3, 2.1], [2.3, 0.0]]    # ilha: face direita
+
+    movable_wall:
+      position: 2
+      segment: [[0.0, 2.7], [1.2, 2.7]]
+      note: "fecha arm1 no turning space (~y=2.7) — medir posição exata"
+
+    start: [2.9, 0.3]    # • centro arm2, 0.3m da entrada (= saída do U)
+    goal:  [2.9, 5.2]    # fim da extensão, 0.3m da parede do fundo
+
+    # Mesmos marcadores físicos do U_esq
+    markers:
+      - id: 20
+        pos: [1.2, 2.1, 1.895]
+        facing: S
+        note: "topo da ilha, canto esquerdo (face inferior)"
+      - id: 21
+        pos: [2.3, 2.1, 1.895]
+        facing: S
+        note: "topo da ilha, canto direito (face inferior)"
+      - id: 22
+        pos: [0.6, 3.3, 1.895]
+        facing: S
+        note: "topo da parede do fundo, sobre arm1"
+      - id: 23
+        pos: [2.9, 3.3, 1.895]
+        facing: S
+        note: "topo da parede do fundo, sobre arm2"
+
+  S_esq:
+    description: "Corredor S — parede móvel posição 3 (fecha arm1 na base da ilha)"
+    #
+    # Percurso em 3 segmentos:
+    #   Seg 1: ✕arm1↓  y=0.0 → y=2.1  (1.2m wide, alongside island)
+    #   Seg 2: →cross   x=0.6 → x=2.9  at y=2.1  (crossing turning space)
+    #   Seg 3: arm2↓   y=2.1 → y=5.5  (arm2 + extensão, 1.2m wide)
+    #
+    # Parede móvel em y=2.1 fecha arm1 (x=0..1.2), forçando a travessia para arm2
+    # Entrada: ✕ arm1 (x=0.6, y=0) — mesma entrada do U
+    # Final: parede fixa em y=5.5
+    #
+    total_width_m: 3.5
+    u_depth_m: 3.3
+    extension_length_m: 2.2
+    total_depth_m: 5.5
+    corridor_width_m: 1.2
+    island_width_m: 1.1
+    island_length_m: 2.1
+    turning_space_m: 1.2
+    wall_height_m: 1.8
+    camera_x_m: 1.2
+    camera_z_min_m: 1.9
+
+    # Paredes fixas + parede móvel na posição 3
+    walls:
+      - [[0.0, 0.0], [0.0, 3.3]]    # parede externa esquerda
+      - [[3.5, 0.0], [3.5, 5.5]]    # parede externa direita
+      - [[0.0, 3.3], [2.3, 3.3]]    # parede do fundo esquerda (fixa)
+      - [[2.3, 3.3], [2.3, 5.5]]    # parede esquerda da extensão
+      - [[2.3, 5.5], [3.5, 5.5]]    # parede do fundo da extensão
+      - [[1.2, 0.0], [1.2, 2.1]]    # ilha: face esquerda
+      - [[1.2, 2.1], [2.3, 2.1]]    # ilha: face inferior
+      - [[2.3, 2.1], [2.3, 0.0]]    # ilha: face direita
+
+    movable_wall:
+      position: 3
+      segment: [[0.0, 2.1], [1.2, 2.1]]
+      note: "fecha arm1 na base da ilha (y=2.1), forçando travessia para arm2"
+
+    path_segments:
+      - label: "arm1"
+        from: [0.6, 0.0]
+        to:   [0.6, 2.1]
+        dir:  "+Y"
+      - label: "crossing"
+        from: [0.6, 2.1]
+        to:   [2.9, 2.1]
+        dir:  "+X"
+      - label: "arm2+ext"
+        from: [2.9, 2.1]
+        to:   [2.9, 5.5]
+        dir:  "+Y"
+
+    start: [0.6, 0.3]    # ✕ centro arm1, 0.3m da entrada (= entrada do U)
+    goal:  [2.9, 5.2]    # fim da extensão, 0.3m da parede do fundo
+
+    # Mesmos marcadores físicos do U_esq
     markers:
       - id: 20
         pos: [1.2, 2.1, 1.895]
