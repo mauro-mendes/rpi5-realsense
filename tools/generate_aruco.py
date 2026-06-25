@@ -1,73 +1,117 @@
 """
-Generate printable A4 ArUco markers (DICT_4X4_50).
+Generate printable A4 ArUco markers (DICT_4X4_50) — IDs 20–25.
 
 Output:
-  tools/aruco_prints/aruco_XX.png  (A4 300 DPI, para conferir)
-  tools/aruco_prints/aruco_XX.pdf  (A4 PDF, para imprimir)
+  tools/aruco_prints/aruco_XX.png          — A4 300 DPI, individual (para conferir)
+  tools/aruco_prints/all_arucos.pdf        — PDF 6 páginas (UMA por marker) → IMPRIMIR ESTE
+  tools/aruco_prints/all_arucos_preview.png — grade 2×3, visão geral
 
-Ao imprimir o PDF: tamanho real / 100% / sem ajustar à página.
-O marker impresso terá exatamente 190mm de lado.
+Ao imprimir all_arucos.pdf:
+  Tamanho real / 100% / sem ajustar à página.
+  Cada marker impresso terá exatamente 190mm de lado.
 
 Usage:
-    python tools/generate_aruco.py
+    conda run -n rpi5-realsense python tools/generate_aruco.py
 """
 import cv2
 import numpy as np
 from pathlib import Path
 from PIL import Image as PILImage
 
-# A4 portrait at 300 DPI
-A4_W_PX = 2480
-A4_H_PX = 3508
+# ── Tamanhos ──────────────────────────────────────────────────────────────────
+A4_W_PX      = 2480   # A4 portrait 300 DPI
+A4_H_PX      = 3508
+MARKER_PX    = 2244   # 190mm @ 300 DPI  (borda branca de ~10mm em volta)
+MARKER_MM    = 190    # tamanho físico impresso
 
-# Marker: 190mm = 2244px at 300 DPI  (leaves ~118px / ~10mm white border)
-MARKER_PX = 2244
-MARKER_SIZE_MM = 190   # printed physical size — used in YAML config
-
-IDS_BY_CORRIDOR = {
-    "reto":     [0, 1],
-    "S_esq_dir": [10, 11, 12, 13],
-    "U_esq":    [20, 21, 22, 23],
+# ── Descrição de cada marcador (para o label) ─────────────────────────────────
+MARKER_INFO = {
+    20: ("x=1.2, y=2.1", "ilha — canto esq (face inferior)"),
+    21: ("x=2.3, y=2.1", "ilha — canto dir (face inferior)"),
+    22: ("x=0.6, y=3.3", "parede fundo — sobre arm1"),
+    23: ("x=2.9, y=3.3", "parede fundo — sobre arm2"),
+    24: ("x=2.5, y=5.5", "extensão — fundo esq (arm2)"),
+    25: ("x=3.2, y=5.5", "extensão — fundo dir (arm2)"),
 }
 
 out_dir = Path(__file__).parent / "aruco_prints"
 out_dir.mkdir(exist_ok=True)
 
-# Support both old (4.x) and new (4.8+) OpenCV aruco API
+# ── API ArUco ─────────────────────────────────────────────────────────────────
 try:
     dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
 except AttributeError:
     dictionary = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)
 
-for corridor, ids in IDS_BY_CORRIDOR.items():
-    for marker_id in ids:
-        try:
-            marker_img = cv2.aruco.generateImageMarker(dictionary, marker_id, MARKER_PX)
-        except AttributeError:
-            marker_img = cv2.aruco.drawMarker(dictionary, marker_id, MARKER_PX)
 
-        # Place marker centered on white A4 canvas
-        canvas = np.ones((A4_H_PX, A4_W_PX), dtype=np.uint8) * 255
-        x0 = (A4_W_PX - MARKER_PX) // 2
-        y0 = (A4_H_PX - MARKER_PX) // 2
-        canvas[y0:y0 + MARKER_PX, x0:x0 + MARKER_PX] = marker_img
+def make_a4_canvas(marker_id: int) -> np.ndarray:
+    """Gera canvas A4 branco com o marker centrado e label na base."""
+    try:
+        marker_img = cv2.aruco.generateImageMarker(dictionary, marker_id, MARKER_PX)
+    except AttributeError:
+        marker_img = cv2.aruco.drawMarker(dictionary, marker_id, MARKER_PX)
 
-        # Label at bottom
-        label = f"ID {marker_id}  |  {corridor}  |  {MARKER_SIZE_MM}mm"
-        cv2.putText(canvas, label, (A4_W_PX // 2 - 400, A4_H_PX - 80),
-                    cv2.FONT_HERSHEY_SIMPLEX, 2.5, 0, 5)
+    canvas = np.ones((A4_H_PX, A4_W_PX), dtype=np.uint8) * 255
+    x0 = (A4_W_PX - MARKER_PX) // 2
+    y0 = (A4_H_PX - MARKER_PX) // 2
+    canvas[y0:y0 + MARKER_PX, x0:x0 + MARKER_PX] = marker_img
 
-        png_path = out_dir / f"aruco_{marker_id:02d}_{corridor}.png"
-        cv2.imwrite(str(png_path), canvas)
+    pos, note = MARKER_INFO.get(marker_id, ("?", ""))
+    line1 = f"ID {marker_id}  |  {MARKER_MM}mm  |  DICT_4X4_50"
+    line2 = f"{pos}  —  {note}"
+    for i, txt in enumerate([line1, line2]):
+        cv2.putText(canvas, txt, (A4_W_PX // 2 - 500, A4_H_PX - 130 + i * 80),
+                    cv2.FONT_HERSHEY_SIMPLEX, 2.2, 0, 4)
+    return canvas
 
-        # PDF A4 a 300 DPI — imprimir em tamanho real (100%)
-        pdf_path = out_dir / f"aruco_{marker_id:02d}_{corridor}.pdf"
-        pil_img = PILImage.fromarray(canvas)
-        pil_img.save(str(pdf_path), "PDF", resolution=300)
 
-        print(f"  {png_path.name}  +  {pdf_path.name}")
+# ── Gera PNGs individuais + coleta imagens para PDF e preview ─────────────────
+all_pages: list[PILImage.Image] = []
+preview_cells: list[np.ndarray] = []
 
-print(f"\nPDFs prontos em tools/aruco_prints/")
-print(f"Imprimir com: Adobe Reader / SumatraPDF / navegador")
-print(f"Opção: Tamanho real  |  100%  |  sem 'ajustar à página'")
-print(f"Tamanho físico do marker: {MARKER_SIZE_MM}mm")
+PREVIEW_SZ = 700  # px por célula na grade de preview
+
+for mid in sorted(MARKER_INFO.keys()):
+    canvas = make_a4_canvas(mid)
+
+    # PNG individual A4
+    png_path = out_dir / f"aruco_{mid:02d}.png"
+    cv2.imwrite(str(png_path), canvas)
+    print(f"  {png_path.name}")
+
+    # acumula página para PDF
+    all_pages.append(PILImage.fromarray(canvas))
+
+    # célula de preview (proporção A4, PREVIEW_SZ de largura)
+    ph = int(PREVIEW_SZ * A4_H_PX / A4_W_PX)
+    cell = cv2.resize(canvas, (PREVIEW_SZ, ph), interpolation=cv2.INTER_AREA)
+    preview_cells.append(cell)
+
+# ── PDF combinado (6 páginas, 1 marker por página) ────────────────────────────
+pdf_path = out_dir / "all_arucos.pdf"
+all_pages[0].save(
+    str(pdf_path), "PDF", resolution=300,
+    save_all=True, append_images=all_pages[1:]
+)
+print(f"\n  PDF combinado → {pdf_path.name}  ({len(all_pages)} páginas)")
+print(f"  Imprimir: Tamanho real | 100% | sem 'ajustar à página'")
+
+# ── Preview grid 2 × 3 ───────────────────────────────────────────────────────
+rows, cols = 3, 2
+ph = preview_cells[0].shape[0]
+grid = np.ones((rows * ph, cols * PREVIEW_SZ), dtype=np.uint8) * 220
+for idx, cell in enumerate(preview_cells):
+    r, c = divmod(idx, cols)
+    y0, x0 = r * ph, c * PREVIEW_SZ
+    grid[y0:y0 + cell.shape[0], x0:x0 + PREVIEW_SZ] = cell
+
+# borda entre células
+for r in range(1, rows):
+    grid[r * ph - 2:r * ph + 2, :] = 100
+for c in range(1, cols):
+    grid[:, c * PREVIEW_SZ - 2:c * PREVIEW_SZ + 2] = 100
+
+prev_path = out_dir / "all_arucos_preview.png"
+cv2.imwrite(str(prev_path), grid)
+print(f"  Preview grid  → {prev_path.name}")
+print(f"\nTamanho físico: {MARKER_MM}mm | Dicionário: DICT_4X4_50 | IDs: {sorted(MARKER_INFO)}")

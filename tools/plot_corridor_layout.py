@@ -264,14 +264,22 @@ def draw_side_view(ax, c):
         ax.add_patch(plt.Polygon([(x0,0),(x1,0),(x1,wh),(x0,wh)],
                                  fc=WALL_COLOR, ec="none", alpha=0.15, zorder=1))
 
-    # marcadores no topo (quadrados vermelhos)
+    # marcadores no topo
+    # marcadores 24-25 (y=5.5, fundo da extensão) têm borda tracejada
     for m in c["markers"]:
-        mx, _, mz = m["pos"]
+        mx, my, mz = m["pos"]
         base = mz - ms/2
+        deep = my > 3.5   # marcadores no fundo da extensão
+        fc   = MARKER_COLOR if not deep else "#c0392b"
+        ls   = "-" if not deep else "--"
         ax.add_patch(plt.Rectangle((mx - ms/2, base), ms, ms,
-                                   fc=MARKER_COLOR, ec="white", lw=1, zorder=5))
+                                   fc=fc, ec="white", lw=1.5,
+                                   linestyle=ls, zorder=5))
         ax.text(mx, mz, str(m["id"]), ha="center", va="center",
                 fontsize=6, fontweight="bold", color="white", zorder=6)
+        if deep:
+            ax.text(mx, mz - ms/2 - 0.05, f"y={my:.1f}", ha="center",
+                    va="top", fontsize=5.5, color=fc, zorder=6)
 
     # câmera com seta de anotação
     ax.plot(cam_x, cam_z, marker=">", ms=14, color=CAMERA_COLOR,

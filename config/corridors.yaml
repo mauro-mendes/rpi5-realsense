@@ -20,15 +20,15 @@
 #
 # Posições da parede móvel (1.2m de largura):
 #   Pos 1 → y=3.3, x=2.3..3.5 : fecha extensão   → corredor U
-#   Pos 2 → y=2.7, x=0.0..1.2 : fecha arm1       → corredor Reto
-#   Pos 3 → y=2.1, x=0.0..1.2 : fecha arm1 na base da ilha → corredor S
+#   Pos 2 → x=2.3, y=2.1..3.3 : parede vertical (estende face dir da ilha) → corredor Reto
+#   Pos 3 → y=2.1, x=2.3..3.5 : fecha arm2 na base da ilha                → corredor S
 #
 # Sistema de coordenadas (compartilhado pelos 3 corredores):
 #   Origem: canto externo esquerdo da entrada (x=0, y=0)
 #   +X = direita  |  +Y = para dentro do corredor  |  +Z = cima
 #
 # Câmera RealSense D435i: fixa em (x=1.2, y=-0.55, z≥1.9)
-# ArUcos IDs 20–23: mesmos marcadores físicos para os 3 corredores
+# ArUcos IDs 20–25: mesmos marcadores físicos para os 3 corredores (24-25 no fundo y=5.5)
 
 marker_size_m: 0.19
 
@@ -100,6 +100,14 @@ corridors:
         pos: [2.9, 3.3, 1.895]
         facing: S
         note: "topo da parede do fundo, sobre arm2"
+      - id: 24
+        pos: [2.5, 5.5, 1.895]
+        facing: S
+        note: "parede do fundo da extensão, lado esquerdo (arm2)"
+      - id: 25
+        pos: [3.2, 5.5, 1.895]
+        facing: S
+        note: "parede do fundo da extensão, lado direito (arm2)"
 
   reto_esq:
     description: "Corredor reto — parede móvel posição 2 (fecha arm1, arm2 livre 5.5m)"
@@ -135,13 +143,13 @@ corridors:
 
     movable_wall:
       position: 2
-      segment: [[0.0, 2.7], [1.2, 2.7]]
-      note: "fecha arm1 no turning space (~y=2.7) — medir posição exata"
+      segment: [[2.3, 2.1], [2.3, 3.3]]
+      note: "parede VERTICAL em x=2.3, y=2.1..3.3 — prolonga face direita da ilha pelo turning space, isola arm2"
 
     start: [2.9, 0.3]    # • centro arm2, 0.3m da entrada (= saída do U)
     goal:  [2.9, 5.2]    # fim da extensão, 0.3m da parede do fundo
 
-    # Mesmos marcadores físicos do U_esq
+    # Mesmos marcadores físicos do U_esq + 2 novos no fundo da extensão
     markers:
       - id: 20
         pos: [1.2, 2.1, 1.895]
@@ -159,16 +167,24 @@ corridors:
         pos: [2.9, 3.3, 1.895]
         facing: S
         note: "topo da parede do fundo, sobre arm2"
+      - id: 24
+        pos: [2.5, 5.5, 1.895]
+        facing: S
+        note: "parede do fundo da extensão, lado esquerdo (arm2)"
+      - id: 25
+        pos: [3.2, 5.5, 1.895]
+        facing: S
+        note: "parede do fundo da extensão, lado direito (arm2)"
 
   S_esq:
-    description: "Corredor S — parede móvel posição 3 (fecha arm1 na base da ilha)"
+    description: "Corredor S — parede móvel posição 3 (fecha arm2 na base da ilha)"
     #
     # Percurso em 3 segmentos:
-    #   Seg 1: ✕arm1↓  y=0.0 → y=2.1  (1.2m wide, alongside island)
-    #   Seg 2: →cross   x=0.6 → x=2.9  at y=2.1  (crossing turning space)
+    #   Seg 1: ✕arm1↓  y=0.0 → y=2.1  (1.2m alongside island)
+    #   Seg 2: →cross   x=0.6 → x=2.9  at y≥2.1  (crossing turning space)
     #   Seg 3: arm2↓   y=2.1 → y=5.5  (arm2 + extensão, 1.2m wide)
     #
-    # Parede móvel em y=2.1 fecha arm1 (x=0..1.2), forçando a travessia para arm2
+    # Parede móvel em y=2.1 fecha arm2 (x=2.3..3.5), forçando o percurso em S
     # Entrada: ✕ arm1 (x=0.6, y=0) — mesma entrada do U
     # Final: parede fixa em y=5.5
     #
@@ -197,8 +213,8 @@ corridors:
 
     movable_wall:
       position: 3
-      segment: [[0.0, 2.1], [1.2, 2.1]]
-      note: "fecha arm1 na base da ilha (y=2.1), forçando travessia para arm2"
+      segment: [[2.3, 2.1], [3.5, 2.1]]
+      note: "parede HORIZONTAL em y=2.1, x=2.3..3.5 — fecha arm2 na base da ilha, forçando percurso em S"
 
     path_segments:
       - label: "arm1"
@@ -217,7 +233,7 @@ corridors:
     start: [0.6, 0.3]    # ✕ centro arm1, 0.3m da entrada (= entrada do U)
     goal:  [2.9, 5.2]    # fim da extensão, 0.3m da parede do fundo
 
-    # Mesmos marcadores físicos do U_esq
+    # Mesmos marcadores físicos do U_esq + 2 novos no fundo da extensão
     markers:
       - id: 20
         pos: [1.2, 2.1, 1.895]
@@ -235,3 +251,11 @@ corridors:
         pos: [2.9, 3.3, 1.895]
         facing: S
         note: "topo da parede do fundo, sobre arm2"
+      - id: 24
+        pos: [2.5, 5.5, 1.895]
+        facing: S
+        note: "parede do fundo da extensão, lado esquerdo (arm2)"
+      - id: 25
+        pos: [3.2, 5.5, 1.895]
+        facing: S
+        note: "parede do fundo da extensão, lado direito (arm2)"
