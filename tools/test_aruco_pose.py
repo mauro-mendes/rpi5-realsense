@@ -211,25 +211,36 @@ def main():
                 obj_arr = np.array(obj_pts, dtype=np.float64)
                 img_arr = np.array(img_pts, dtype=np.float64)
 
+                # RANSAC relaxado: 20px para aceitar erros de medição do YAML
                 ok, rvec, tvec, inliers = cv2.solvePnPRansac(
                     obj_arr, img_arr, K, dist,
-                    iterationsCount=200, reprojectionError=3.0,
-                    flags=cv2.SOLVEPNP_ITERATIVE)
+                    iterationsCount=500, reprojectionError=20.0,
+                    confidence=0.99, flags=cv2.SOLVEPNP_ITERATIVE)
 
-                if ok and inliers is not None and len(inliers) >= 4:
+                n_inliers = len(inliers.flatten()) if (ok and inliers is not None) else 0
+
+                # fallback: solvePnP direto com todos os pontos
+                if not ok or n_inliers < 4:
+                    ok, rvec, tvec = cv2.solvePnP(
+                        obj_arr, img_arr, K, dist,
+                        flags=cv2.SOLVEPNP_ITERATIVE)
+                    idx = np.arange(len(obj_arr))
+                else:
                     idx = inliers.flatten()
-                    ok2, rvec, tvec = cv2.solvePnP(
+                    # refina com inliers
+                    ok, rvec, tvec = cv2.solvePnP(
                         obj_arr[idx], img_arr[idx], K, dist,
                         rvec, tvec, useExtrinsicGuess=True,
                         flags=cv2.SOLVEPNP_ITERATIVE)
-                    if ok2:
-                        pose_valid  = True
-                        cam_pos     = camera_world_pos(rvec, tvec)
-                        reproj_mean, reproj_max = reprojection_error(
-                            obj_arr[idx], img_arr[idx], rvec, tvec, K, dist)
-                        history.append(cam_pos.copy())
-                        if len(history) > HISTORY_LEN:
-                            history.pop(0)
+
+                if ok:
+                    pose_valid  = True
+                    cam_pos     = camera_world_pos(rvec, tvec)
+                    reproj_mean, reproj_max = reprojection_error(
+                        obj_arr[idx], img_arr[idx], rvec, tvec, K, dist)
+                    history.append(cam_pos.copy())
+                    if len(history) > HISTORY_LEN:
+                        history.pop(0)
 
             # ── Overlay na frame ──────────────────────────────────────────
             draw_overlay(frame, detected_ids, pose_valid, cam_pos,
@@ -238,14 +249,15 @@ def main():
             # ── Log no terminal a cada 2 s ────────────────────────────────
             now = time.time()
             if now - last_log >= 2.0:
-                ids_str = str(detected_ids) if detected_ids else "[]"
+                ids_str  = str(detected_ids) if detected_ids else "[]"
+                pts_info = f"obj_pts={len(obj_pts)}"
                 if pose_valid:
-                    print(f"[f={frame_count:05d}] ids={ids_str}  "
+                    print(f"[f={frame_count:05d}] ids={ids_str}  {pts_info}  "
                           f"cam=({cam_pos[0]:+.3f},{cam_pos[1]:+.3f},"
                           f"{cam_pos[2]:+.3f})  reproj={reproj_mean:.1f}px")
                 else:
-                    print(f"[f={frame_count:05d}] ids={ids_str}  "
-                          f"(aguardando ≥{MIN_MARKERS} marcadores)")
+                    print(f"[f={frame_count:05d}] ids={ids_str}  {pts_info}  "
+                          f"solvePnP=FALHOU")
                 last_log = now
 
             # ── Janela / headless ─────────────────────────────────────────
