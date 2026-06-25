@@ -160,15 +160,11 @@ def main():
         cv2.resizeWindow(WIN, 960, 540)
         print("[OK] Janela criada — aguarda primeiro frame...")
 
-    # ── Chute inicial: câmara olha em +Y (corredor), levemente inclinada para baixo ──
-    # Inclinação descendente ~10°: Z_cam aponta em direção (0, sin10°, -cos10°) no mundo
-    import math as _math
-    _tilt = _math.radians(10)          # inclinação para baixo estimada
-    _c, _s = _math.cos(_tilt), _math.sin(_tilt)
-    # R mapeia mundo→câmara
-    R_init = np.array([[1,  0,    0   ],
-                       [0,  _s,  -_c  ],   # Y_cam: componente de altura (−Z_mundo)
-                       [0,  _c,   _s  ]], dtype=np.float64)  # Z_cam: eixo ótico
+    # ── Chute inicial: câmara horizontal a olhar em +Y ────────────────────────
+    # R mapeia mundo→câmara: X_cam=+X_mundo, Y_cam=−Z_mundo, Z_cam=+Y_mundo
+    R_init = np.array([[1, 0,  0],
+                       [0, 0, -1],
+                       [0, 1,  0]], dtype=np.float64)
     rvec_init, _ = cv2.Rodrigues(R_init)
     tvec_init    = (-R_init @ CAM_EXPECTED.reshape(3, 1)).astype(np.float64)
 
