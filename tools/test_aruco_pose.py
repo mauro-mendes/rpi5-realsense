@@ -20,6 +20,7 @@ Teclas:
 """
 
 import argparse
+import os
 import time
 from pathlib import Path
 
@@ -27,6 +28,10 @@ import cv2
 import numpy as np
 import pyrealsense2 as rs
 import yaml
+
+def _has_display() -> bool:
+    """Detecta se existe display disponível (X11 / Wayland)."""
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 # ── Config ────────────────────────────────────────────────────────────────────
 YAML_PATH     = Path(__file__).parent.parent / "config" / "corridors.yaml"
@@ -133,8 +138,9 @@ def main():
     # ── RealSense ──────────────────────────────────────────────────────────
     pipeline = rs.pipeline()
     cfg_rs   = rs.config()
-    cfg_rs.enable_stream(rs.stream.color, 848, 480, rs.format.bgr8, 30)
+    cfg_rs.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
     profile  = pipeline.start(cfg_rs)
+    print("[OK] Pipeline RealSense iniciado (640x480 @ 30fps)")
 
     intr = (profile.get_stream(rs.stream.color)
             .as_video_stream_profile().get_intrinsics())
@@ -145,17 +151,34 @@ def main():
     print(f"Intrínsecas: fx={intr.fx:.1f} fy={intr.fy:.1f} "
           f"cx={intr.ppx:.1f} cy={intr.ppy:.1f}")
 
+    # janela de vídeo
+    WIN = "ArUco Pose — Q=sair  S=salvar  C=limpar"
+    if not args.headless:
+        cv2.namedWindow(WIN, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(WIN, 960, 540)
+        print("[OK] Janela criada — aguarda primeiro frame...")
+
     history: list[np.ndarray] = []
-    save_idx = 0
-    last_headless_save = 0.0
+    save_idx     = 0
+    frame_count  = 0
+    last_log     = time.time()
+    last_save    = time.time()
 
     try:
         while True:
-            frames    = pipeline.wait_for_frames()
-            color_f   = frames.get_color_frame()
-            if not color_f:
+            try:
+                frames = pipeline.wait_for_frames(timeout_ms=5000)
+            except RuntimeError as e:
+                print(f"[WARN] wait_for_frames timeout: {e}")
                 continue
+
+            color_f = frames.get_color_frame()
+            if not color_f:
+                print("[WARN] frame de cor inválido — a ignorar")
+                continue
+
             frame = np.asanyarray(color_f.get_data()).copy()
+            frame_count += 1
 
             # ── Deteção ───────────────────────────────────────────────────
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -168,22 +191,20 @@ def main():
             detected_ids = (ids_raw.flatten().tolist()
                             if ids_raw is not None else [])
 
-            # Desenha todos os marcadores detetados
             if ids_raw is not None:
                 cv2.aruco.drawDetectedMarkers(frame, corners_list, ids_raw)
 
-            # ── Monta pontos para solvePnP ────────────────────────────────
+            # ── solvePnP ──────────────────────────────────────────────────
             obj_pts: list[np.ndarray] = []
             img_pts: list[np.ndarray] = []
-
             for mid, corners in zip(detected_ids,
                                     [c[0] for c in corners_list]):
                 if mid in known:
                     obj_pts.append(known[mid])
-                    img_pts.append(corners.mean(axis=0))  # centro do marker
+                    img_pts.append(corners.mean(axis=0))
 
-            pose_valid = False
-            cam_pos    = np.zeros(3)
+            pose_valid  = False
+            cam_pos     = np.zeros(3)
             reproj_mean = reproj_max = 0.0
 
             if len(obj_pts) >= MIN_MARKERS:
@@ -196,8 +217,7 @@ def main():
                     flags=cv2.SOLVEPNP_ITERATIVE)
 
                 if ok and inliers is not None and len(inliers) >= 4:
-                    # refina com só os inliers
-                    idx      = inliers.flatten()
+                    idx = inliers.flatten()
                     ok2, rvec, tvec = cv2.solvePnP(
                         obj_arr[idx], img_arr[idx], K, dist,
                         rvec, tvec, useExtrinsicGuess=True,
@@ -211,25 +231,39 @@ def main():
                         if len(history) > HISTORY_LEN:
                             history.pop(0)
 
-            # ── Overlay ───────────────────────────────────────────────────
+            # ── Overlay na frame ──────────────────────────────────────────
             draw_overlay(frame, detected_ids, pose_valid, cam_pos,
                          reproj_mean, reproj_max, len(obj_pts), history)
 
-            # ── Output ────────────────────────────────────────────────────
+            # ── Log no terminal a cada 2 s ────────────────────────────────
+            now = time.time()
+            if now - last_log >= 2.0:
+                ids_str = str(detected_ids) if detected_ids else "[]"
+                if pose_valid:
+                    print(f"[f={frame_count:05d}] ids={ids_str}  "
+                          f"cam=({cam_pos[0]:+.3f},{cam_pos[1]:+.3f},"
+                          f"{cam_pos[2]:+.3f})  reproj={reproj_mean:.1f}px")
+                else:
+                    print(f"[f={frame_count:05d}] ids={ids_str}  "
+                          f"(aguardando ≥{MIN_MARKERS} marcadores)")
+                last_log = now
+
+            # ── Janela / headless ─────────────────────────────────────────
             if args.headless:
-                now = time.time()
-                if now - last_headless_save >= 1.0:
+                if now - last_save >= 2.0:
                     fname = OUT_DIR / f"aruco_pose_{save_idx:04d}.png"
                     cv2.imwrite(str(fname), frame)
-                    last_headless_save = now
+                    last_save = now
                     save_idx += 1
-                    if pose_valid:
-                        print(f"[{save_idx:04d}] "
-                              f"cam=({cam_pos[0]:+.3f}, {cam_pos[1]:+.3f}, "
-                              f"{cam_pos[2]:+.3f})  reproj={reproj_mean:.2f}px  "
-                              f"ids={detected_ids}")
             else:
-                cv2.imshow("ArUco Pose Test — Q=sair", frame)
+                try:
+                    cv2.imshow(WIN, frame)
+                except cv2.error as e:
+                    print(f"[WARN] imshow falhou: {e}")
+                    print("[INFO] A usar modo headless automático.")
+                    args.headless = True
+                    continue
+
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord("q"):
                     break
