@@ -217,15 +217,20 @@ def generate_plot(trajectory: list, traj_times: list, cam_pos: np.ndarray,
     return out
 
 
-def _filter_outliers(pts: np.ndarray, max_jump: float = 0.35) -> np.ndarray:
-    """Remove pontos com salto > max_jump metros em relação ao ponto anterior aceite."""
+def _filter_outliers(pts: np.ndarray, max_jump: float = 0.6) -> np.ndarray:
+    """Remove pontos com salto > max_jump metros em relação ao ponto anterior aceite.
+    Se o resultado tiver < 20% dos pontos originais, devolve os pontos originais."""
     if len(pts) < 2:
         return pts
     keep = [0]
     for i in range(1, len(pts)):
         if np.linalg.norm(pts[i] - pts[keep[-1]]) <= max_jump:
             keep.append(i)
-    return pts[keep]
+    filtered = pts[keep]
+    # fallback: se filtrou demasiado, usa originais
+    if len(filtered) < max(2, len(pts) // 5):
+        return pts
+    return filtered
 
 
 def _smooth_path(pts: np.ndarray, window: int = 7) -> np.ndarray:
@@ -239,16 +244,20 @@ def _smooth_path(pts: np.ndarray, window: int = 7) -> np.ndarray:
     return out
 
 
-def _resample_path(trajectory: list, n_pts: int = 200) -> tuple:
-    """Filtra outliers, suaviza e reamosta por distância acumulada (arco)."""
+def _resample_path(trajectory: list, n_pts: int = 200) -> "tuple | None":
+    """Filtra outliers, suaviza e reamosta por distância acumulada (arco).
+    Devolve (x_res, y_res) ou None se pontos insuficientes."""
     pts = np.array([[p[0], p[1]] for p in trajectory])
-    pts = _filter_outliers(pts, max_jump=0.35)
-    pts = _smooth_path(pts, window=7)
+    pts = _filter_outliers(pts)
+    if len(pts) >= 7:
+        pts = _smooth_path(pts, window=7)
+    if len(pts) < 2:
+        return None
     segs  = np.linalg.norm(np.diff(pts, axis=0), axis=1)
     cumul = np.concatenate([[0.0], np.cumsum(segs)])
     total = cumul[-1]
-    if total < 1e-6:
-        return pts[:, 0], pts[:, 1]
+    if total < 0.1:   # menos de 10cm — sem movimento útil
+        return None
     d_uni = np.linspace(0.0, total, n_pts)
     x_res = np.interp(d_uni, cumul, pts[:, 0])
     y_res = np.interp(d_uni, cumul, pts[:, 1])
@@ -294,16 +303,18 @@ def generate_path_plot(trajectory: list, cam_pos: np.ndarray,
             label=f"Câmara ({cam_pos[0]:.2f}, {cam_pos[1]:.2f})")
 
     # Caminho reamostrado
-    if trajectory:
-        x_res, y_res = _resample_path(trajectory)
-        # linha fina conectando todos os pontos reamostrados
+    res = _resample_path(trajectory) if trajectory else None
+    if res is not None:
+        x_res, y_res = res
         ax.plot(x_res, y_res, color="steelblue", linewidth=1.5,
                 zorder=4, alpha=0.7)
-        # marcadores equidistantes (a cada ~10 pontos)
         ax.scatter(x_res[::10], y_res[::10], color="steelblue",
                    s=18, zorder=5, label="Caminho (equidist.)")
         ax.plot(x_res[0],  y_res[0],  "go", markersize=11, zorder=6, label="Início")
         ax.plot(x_res[-1], y_res[-1], "ro", markersize=11, zorder=6, label="Fim")
+    else:
+        ax.text(0.5, 0.5, "pontos insuficientes", transform=ax.transAxes,
+                ha="center", va="center", color="gray", fontsize=10)
 
     ax.set_xlim(-0.3, total_w + 0.3)
     ax.set_ylim(cam_pos[1] - 0.4, total_d + 0.4)
