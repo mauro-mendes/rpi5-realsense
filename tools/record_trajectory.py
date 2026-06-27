@@ -355,6 +355,8 @@ def main():
                         help="Tipo de corredor para o plot final")
     parser.add_argument("--headless", action="store_true",
                         help="Sem janela — grava frames em output/")
+    parser.add_argument("--record", action="store_true",
+                        help="Grava vídeo da câmara em output/video_<corredor>_<ts>.avi")
     args = parser.parse_args()
 
     OUT_DIR.mkdir(exist_ok=True)
@@ -416,6 +418,16 @@ def main():
     last_log    = 0.0
     last_save   = 0.0
     RECORD_DT   = 1.0 / RECORD_HZ
+
+    # ── Vídeo opcional ────────────────────────────────────────────────────────
+    video_writer: "cv2.VideoWriter | None" = None
+    video_path:   "Path | None"            = None
+    if args.record:
+        _vts      = datetime.now().strftime("%Y%m%d_%H%M%S")
+        video_path = OUT_DIR / f"video_{args.corridor}_{_vts}.avi"
+        fourcc     = cv2.VideoWriter_fourcc(*"MJPG")
+        video_writer = cv2.VideoWriter(str(video_path), fourcc, 30, (640, 480))
+        print(f"[REC]  A gravar vídeo → {video_path.name}")
 
     try:
         while True:
@@ -534,6 +546,10 @@ def main():
                     print(f"[f={frame_cnt:05d}] pts={len(trajectory):4d}  {bs}")
                     last_log = now
 
+            # ── Grava frame no vídeo ──────────────────────────────────────
+            if video_writer is not None:
+                video_writer.write(frame)
+
             # ── Janela / headless ──────────────────────────────────────────
             if args.headless:
                 if now - last_save >= 2.0:
@@ -566,6 +582,9 @@ def main():
     finally:
         pipeline.stop()
         cv2.destroyAllWindows()
+        if video_writer is not None:
+            video_writer.release()
+            print(f"[REC]  Vídeo guardado → {video_path.name}")
         print(f"\n{'─'*50}")
 
         # ── CSV ────────────────────────────────────────────────────────────
