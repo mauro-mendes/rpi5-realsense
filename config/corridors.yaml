@@ -114,11 +114,11 @@ corridors:
         note: "parede do fundo da extensão, lado direito (arm2)"
 
   reto_esq:
-    description: "Corredor reto — parede móvel posição 2 (fecha arm1, arm2 livre 5.5m)"
+    description: "Corredor reto — parede móvel posição 2 (fecha arm2, arm1 livre 5.5m)"
     #
-    # Percurso: •arm2↓ direto (y=0 → y=5.5) = 5.5m em linha reta
-    # Entrada: centro arm2 (x=2.9, y=0) — mesma posição que saída do U
-    # Parede móvel fecha arm1 no turning space (y≈2.7, x=0..1.2)
+    # Percurso: •arm1↓ direto (y=0 → y=5.5) = 5.5m em linha reta
+    # Entrada: centro arm1 (x=0.6, y=0)
+    # Parede móvel fecha arm2 no turning space (x=1.2, y=2.1..3.3)
     # Parede fixa no fundo: y=5.5 (fim da extensão)
     #
     total_width_m: 3.5
@@ -136,22 +136,22 @@ corridors:
 
     # Paredes fixas + parede móvel na posição 2
     walls:
-      - [[0.0, 0.0], [0.0, 3.3]]    # parede externa esquerda
-      - [[3.5, 0.0], [3.5, 5.5]]    # parede externa direita (arm2 + extensão)
-      - [[0.0, 3.3], [2.3, 3.3]]    # parede do fundo esquerda (fixa, x=0..2.3)
-      - [[2.3, 3.3], [2.3, 5.5]]    # parede esquerda da extensão
-      - [[2.3, 5.5], [3.5, 5.5]]    # parede do fundo da extensão (fim)
-      - [[1.2, 0.0], [1.2, 2.1]]    # ilha: face esquerda
-      - [[1.2, 2.1], [2.3, 2.1]]    # ilha: face inferior
-      - [[2.3, 2.1], [2.3, 0.0]]    # ilha: face direita
+      - [[3.5, 0.0], [3.5, 3.3]]    # parede externa direita
+      - [[0.0, 0.0], [0.0, 5.5]]    # parede externa esquerda (arm1 + extensão)
+      - [[3.5, 3.3], [1.2, 3.3]]    # parede do fundo direita (fixa, x=1.2..3.5)
+      - [[1.2, 3.3], [1.2, 5.5]]    # parede direita da extensão
+      - [[1.2, 5.5], [0.0, 5.5]]    # parede do fundo da extensão (fim)
+      - [[2.3, 0.0], [2.3, 2.1]]    # ilha: face direita
+      - [[2.3, 2.1], [1.2, 2.1]]    # ilha: face inferior
+      - [[1.2, 2.1], [1.2, 0.0]]    # ilha: face esquerda
 
     movable_wall:
       position: 2
-      segment: [[2.3, 2.1], [2.3, 3.3]]
-      note: "parede VERTICAL em x=2.3, y=2.1..3.3 — prolonga face direita da ilha pelo turning space, isola arm2"
+      segment: [[1.2, 2.1], [1.2, 3.3]]
+      note: "parede VERTICAL em x=1.2, y=2.1..3.3 — prolonga face esquerda da ilha pelo turning space, isola arm1"
 
-    start: [2.9, 0.3]    # • centro arm2, 0.3m da entrada (= saída do U)
-    goal:  [2.9, 5.2]    # fim da extensão, 0.3m da parede do fundo
+    start: [0.6, 0.3]    # • centro arm1, 0.3m da entrada
+    goal:  [0.6, 5.2]    # fim da extensão, 0.3m da parede do fundo
 
     # Mesmos marcadores físicos do U_esq + 2 novos no fundo da extensão
     markers:
@@ -181,15 +181,15 @@ corridors:
         note: "parede do fundo da extensão, lado direito (arm2)"
 
   S_esq:
-    description: "Corredor S — parede móvel posição 3 (fecha arm2 na base da ilha)"
+    description: "Corredor S — parede móvel posição 3 (fecha arm1 na base da ilha)"
     #
     # Percurso em 3 segmentos:
-    #   Seg 1: ✕arm1↓  y=0.0 → y=2.1  (1.2m alongside island)
-    #   Seg 2: →cross   x=0.6 → x=2.9  at y≥2.1  (crossing turning space)
-    #   Seg 3: arm2↓   y=2.1 → y=5.5  (arm2 + extensão, 1.2m wide)
+    #   Seg 1: arm2↓   y=0.0 → y=3.3  (arm2 direita, x=2.9)
+    #   Seg 2: ←cross  x=2.9 → x=0.6  at y≈3.3  (crossing turning space)
+    #   Seg 3: arm1+ext↓  y=3.3 → y=5.5  (arm1 esquerda + extensão)
     #
-    # Parede móvel em y=2.1 fecha arm2 (x=2.3..3.5), forçando o percurso em S
-    # Entrada: ✕ arm1 (x=0.6, y=0) — mesma entrada do U
+    # Parede móvel em y=2.1 fecha arm1 (x=0..1.2), forçando o percurso em S
+    # Entrada: arm2 (x=2.9, y=0)
     # Final: parede fixa em y=5.5
     #
     total_width_m: 3.5
@@ -206,36 +206,36 @@ corridors:
 
     # Paredes fixas + parede móvel na posição 3
     walls:
-      - [[0.0, 0.0], [0.0, 3.3]]    # parede externa esquerda
-      - [[3.5, 0.0], [3.5, 5.5]]    # parede externa direita
-      - [[0.0, 3.3], [2.3, 3.3]]    # parede do fundo esquerda (fixa)
-      - [[2.3, 3.3], [2.3, 5.5]]    # parede esquerda da extensão
-      - [[2.3, 5.5], [3.5, 5.5]]    # parede do fundo da extensão
-      - [[1.2, 0.0], [1.2, 2.1]]    # ilha: face esquerda
-      - [[1.2, 2.1], [2.3, 2.1]]    # ilha: face inferior
-      - [[2.3, 2.1], [2.3, 0.0]]    # ilha: face direita
+      - [[3.5, 0.0], [3.5, 3.3]]    # parede externa direita
+      - [[0.0, 0.0], [0.0, 5.5]]    # parede externa esquerda (arm1 + extensão)
+      - [[3.5, 3.3], [1.2, 3.3]]    # parede do fundo direita (fixa)
+      - [[1.2, 3.3], [1.2, 5.5]]    # parede direita da extensão
+      - [[1.2, 5.5], [0.0, 5.5]]    # parede do fundo da extensão
+      - [[2.3, 0.0], [2.3, 2.1]]    # ilha: face direita
+      - [[2.3, 2.1], [1.2, 2.1]]    # ilha: face inferior
+      - [[1.2, 2.1], [1.2, 0.0]]    # ilha: face esquerda
 
     movable_wall:
       position: 3
-      segment: [[2.3, 2.1], [3.5, 2.1]]
-      note: "parede HORIZONTAL em y=2.1, x=2.3..3.5 — fecha arm2 na base da ilha, forçando percurso em S"
+      segment: [[1.2, 2.1], [0.0, 2.1]]
+      note: "parede HORIZONTAL em y=2.1, x=0..1.2 — fecha arm1 na base da ilha, forçando percurso em S"
 
     path_segments:
-      - label: "arm1"
-        from: [0.6, 0.0]
-        to:   [0.6, 2.1]
+      - label: "arm2"
+        from: [2.9, 0.0]
+        to:   [2.9, 3.3]
         dir:  "+Y"
       - label: "crossing"
-        from: [0.6, 2.1]
-        to:   [2.9, 2.1]
-        dir:  "+X"
-      - label: "arm2+ext"
-        from: [2.9, 2.1]
-        to:   [2.9, 5.5]
+        from: [2.9, 3.3]
+        to:   [0.6, 3.3]
+        dir:  "-X"
+      - label: "arm1+ext"
+        from: [0.6, 3.3]
+        to:   [0.6, 5.5]
         dir:  "+Y"
 
-    start: [0.6, 0.3]    # ✕ centro arm1, 0.3m da entrada (= entrada do U)
-    goal:  [2.9, 5.2]    # fim da extensão, 0.3m da parede do fundo
+    start: [2.9, 0.3]    # ✕ centro arm2, 0.3m da entrada
+    goal:  [0.6, 5.2]    # fim da extensão arm1, 0.3m da parede do fundo
 
     # Mesmos marcadores físicos do U_esq + 2 novos no fundo da extensão
     markers:
