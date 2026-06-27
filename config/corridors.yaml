@@ -109,7 +109,7 @@ corridors:
         facing: S
         note: "parede do fundo da extensão, lado esquerdo (arm2)"
       - id: 25
-        pos: [0.125, 5.515, 2.295]
+        pos: [0.425, 5.515, 2.295]
         facing: S
         note: "parede do fundo da extensão, lado direito (arm2)"
 
@@ -176,7 +176,7 @@ corridors:
         facing: S
         note: "parede do fundo da extensão, lado esquerdo (arm2)"
       - id: 25
-        pos: [0.125, 5.515, 2.295]
+        pos: [0.425, 5.515, 2.295]
         facing: S
         note: "parede do fundo da extensão, lado direito (arm2)"
 
@@ -260,6 +260,6 @@ corridors:
         facing: S
         note: "parede do fundo da extensão, lado esquerdo (arm2)"
       - id: 25
-        pos: [0.125, 5.515, 2.295]
+        pos: [0.425, 5.515, 2.295]
         facing: S
         note: "parede do fundo da extensão, lado direito (arm2)"
