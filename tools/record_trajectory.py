@@ -217,9 +217,33 @@ def generate_plot(trajectory: list, traj_times: list, cam_pos: np.ndarray,
     return out
 
 
+def _filter_outliers(pts: np.ndarray, max_jump: float = 0.35) -> np.ndarray:
+    """Remove pontos com salto > max_jump metros em relação ao ponto anterior aceite."""
+    if len(pts) < 2:
+        return pts
+    keep = [0]
+    for i in range(1, len(pts)):
+        if np.linalg.norm(pts[i] - pts[keep[-1]]) <= max_jump:
+            keep.append(i)
+    return pts[keep]
+
+
+def _smooth_path(pts: np.ndarray, window: int = 7) -> np.ndarray:
+    """Média móvel centrada, preserva os extremos."""
+    if len(pts) < window:
+        return pts
+    half = window // 2
+    out  = pts.copy().astype(float)
+    for i in range(half, len(pts) - half):
+        out[i] = pts[i - half : i + half + 1].mean(axis=0)
+    return out
+
+
 def _resample_path(trajectory: list, n_pts: int = 200) -> tuple:
-    """Reamosta a trajectória por distância acumulada (arco), n_pts equidistantes."""
+    """Filtra outliers, suaviza e reamosta por distância acumulada (arco)."""
     pts = np.array([[p[0], p[1]] for p in trajectory])
+    pts = _filter_outliers(pts, max_jump=0.35)
+    pts = _smooth_path(pts, window=7)
     segs  = np.linalg.norm(np.diff(pts, axis=0), axis=1)
     cumul = np.concatenate([[0.0], np.cumsum(segs)])
     total = cumul[-1]
