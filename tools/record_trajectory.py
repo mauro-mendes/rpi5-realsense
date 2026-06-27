@@ -217,6 +217,85 @@ def generate_plot(trajectory: list, traj_times: list, cam_pos: np.ndarray,
     return out
 
 
+def _resample_path(trajectory: list, n_pts: int = 200) -> tuple:
+    """Reamosta a trajectória por distância acumulada (arco), n_pts equidistantes."""
+    pts = np.array([[p[0], p[1]] for p in trajectory])
+    segs  = np.linalg.norm(np.diff(pts, axis=0), axis=1)
+    cumul = np.concatenate([[0.0], np.cumsum(segs)])
+    total = cumul[-1]
+    if total < 1e-6:
+        return pts[:, 0], pts[:, 1]
+    d_uni = np.linspace(0.0, total, n_pts)
+    x_res = np.interp(d_uni, cumul, pts[:, 0])
+    y_res = np.interp(d_uni, cumul, pts[:, 1])
+    return x_res, y_res
+
+
+def generate_path_plot(trajectory: list, cam_pos: np.ndarray,
+                       corridor_key: str, cfg: dict,
+                       out_dir: Path, ts: str) -> Path:
+    """Plot com caminho reamostrado por distância (pontos equidistantes em arco)."""
+    corridor = cfg["corridors"].get(corridor_key, {})
+    sg       = cfg.get("shared_geometry", {})
+
+    total_w = corridor.get("total_width_m", sg.get("total_width_m", 3.5))
+    total_d = corridor.get("total_depth_m",
+              corridor.get("u_depth_m", sg.get("total_depth_m", 5.5)))
+
+    fig, ax = plt.subplots(figsize=(6, 10))
+    ax.set_aspect("equal")
+    ax.set_title(f"Caminho (reamostrado) — {corridor_key}", fontsize=13)
+    ax.set_xlabel("X (m)")
+    ax.set_ylabel("Y (m)")
+    ax.grid(True, alpha=0.25)
+
+    # Paredes
+    for wall in corridor.get("walls", []):
+        ax.plot([wall[0][0], wall[1][0]], [wall[0][1], wall[1][1]],
+                "k-", linewidth=2)
+    mw = corridor.get("movable_wall", {}).get("segment")
+    if mw:
+        ax.plot([mw[0][0], mw[1][0]], [mw[0][1], mw[1][1]],
+                "b--", linewidth=2, label="Parede móvel")
+
+    # Marcadores
+    for m in corridor.get("markers", []):
+        ax.plot(m["pos"][0], m["pos"][1], "rs", markersize=7, zorder=3)
+        ax.text(m["pos"][0] + 0.05, m["pos"][1], str(m["id"]),
+                fontsize=7, color="darkred", va="center")
+
+    # Câmara
+    ax.plot(cam_pos[0], cam_pos[1], "D", color="darkorange",
+            markersize=11, zorder=4,
+            label=f"Câmara ({cam_pos[0]:.2f}, {cam_pos[1]:.2f})")
+
+    # Caminho reamostrado
+    if trajectory:
+        x_res, y_res = _resample_path(trajectory)
+        # linha fina conectando todos os pontos reamostrados
+        ax.plot(x_res, y_res, color="steelblue", linewidth=1.5,
+                zorder=4, alpha=0.7)
+        # marcadores equidistantes (a cada ~10 pontos)
+        ax.scatter(x_res[::10], y_res[::10], color="steelblue",
+                   s=18, zorder=5, label="Caminho (equidist.)")
+        ax.plot(x_res[0],  y_res[0],  "go", markersize=11, zorder=6, label="Início")
+        ax.plot(x_res[-1], y_res[-1], "ro", markersize=11, zorder=6, label="Fim")
+
+    ax.set_xlim(-0.3, total_w + 0.3)
+    ax.set_ylim(cam_pos[1] - 0.4, total_d + 0.4)
+    ax.legend(loc="upper right", fontsize=8)
+
+    ax.axhline(0, color="gray", linestyle=":", linewidth=1, alpha=0.6)
+    ax.text(total_w / 2, -0.15, "entrada", ha="center",
+            fontsize=8, color="gray")
+
+    out = out_dir / f"path_{corridor_key}_{ts}.png"
+    fig.tight_layout()
+    fig.savefig(str(out), dpi=150)
+    plt.close(fig)
+    return out
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser()
@@ -451,9 +530,13 @@ def main():
             print(f"[CSV]  {len(trajectory)} pontos → {csv_path.name}")
 
             # ── Plot PNG ───────────────────────────────────────────────────
+            ts_str    = datetime.now().strftime("%Y%m%d_%H%M%S")
             plot_path = generate_plot(
                 trajectory, traj_times, cam_pos, args.corridor, cfg, OUT_DIR)
-            print(f"[PLOT] → {plot_path.name}")
+            path_path = generate_path_plot(
+                trajectory, cam_pos, args.corridor, cfg, OUT_DIR, ts_str)
+            print(f"[PLOT] scatter → {plot_path.name}")
+            print(f"[PLOT] caminho → {path_path.name}")
             print(f"       Transferir para PC: git pull após push do RPi5")
         else:
             print("[AVISO] Nenhum ponto gravado.")
