@@ -153,7 +153,7 @@ def ball_world_pos(px, py, depth_f, cam_pos, intr) -> "np.ndarray | None":
 
 
 # ── Plot final ────────────────────────────────────────────────────────────────
-def generate_plot(trajectory: list, cam_pos: np.ndarray,
+def generate_plot(trajectory: list, traj_times: list, cam_pos: np.ndarray,
                   corridor_key: str, cfg: dict, out_dir: Path) -> Path:
     corridor = cfg["corridors"].get(corridor_key, {})
     sg       = cfg.get("shared_geometry", {})
@@ -190,13 +190,13 @@ def generate_plot(trajectory: list, cam_pos: np.ndarray,
             markersize=11, zorder=4,
             label=f"Câmara ({cam_pos[0]:.2f}, {cam_pos[1]:.2f})")
 
-    # Trajectória (cores por tempo)
+    # Trajectória (cores por tempo em segundos)
     if trajectory:
         xs = [p[0] for p in trajectory]
         ys = [p[1] for p in trajectory]
-        sc = ax.scatter(xs, ys, c=range(len(xs)), cmap="plasma",
+        sc = ax.scatter(xs, ys, c=traj_times, cmap="plasma",
                         s=10, zorder=4, label="Trajectória")
-        plt.colorbar(sc, ax=ax, label="Tempo →", shrink=0.6)
+        plt.colorbar(sc, ax=ax, label="Tempo (s)", shrink=0.6)
         ax.plot(xs[0],  ys[0],  "go", markersize=11, zorder=5, label="Início")
         ax.plot(xs[-1], ys[-1], "ro", markersize=11, zorder=5, label="Fim")
 
@@ -276,7 +276,9 @@ def main():
     cam_pos     = np.zeros(3)
     depth_hist: list[np.ndarray] = []
 
-    trajectory: list[np.ndarray] = []
+    trajectory:  list[np.ndarray] = []
+    traj_times:  list[float]      = []   # segundos desde início da gravação
+    t0_record:   float            = 0.0  # timestamp do primeiro ponto
     show_mask  = False
     save_idx   = 0
     frame_cnt  = 0
@@ -370,7 +372,10 @@ def main():
                                     (0, 255, 0), 2)
                         # grava com limite de taxa
                         if now - last_record >= RECORD_DT:
+                            if not trajectory:
+                                t0_record = now
                             trajectory.append(ball_world.copy())
+                            traj_times.append(now - t0_record)
                             last_record = now
 
                     if show_mask:
@@ -417,6 +422,7 @@ def main():
                     break
                 elif key == ord("r"):
                     trajectory.clear()
+                    traj_times.clear()
                     print("Trajectória limpa — a gravar de novo.")
                 elif key == ord("b"):
                     show_mask = not show_mask
@@ -438,14 +444,15 @@ def main():
             csv_path = OUT_DIR / f"trajectory_{args.corridor}_{ts}.csv"
             with open(csv_path, "w", newline="") as f:
                 w = csv.writer(f)
-                w.writerow(["n", "x_m", "y_m", "z_m"])
-                for i, p in enumerate(trajectory):
-                    w.writerow([i, f"{p[0]:.4f}", f"{p[1]:.4f}", f"{p[2]:.4f}"])
+                w.writerow(["n", "t_s", "x_m", "y_m", "z_m"])
+                for i, (p, t) in enumerate(zip(trajectory, traj_times)):
+                    w.writerow([i, f"{t:.3f}",
+                                f"{p[0]:.4f}", f"{p[1]:.4f}", f"{p[2]:.4f}"])
             print(f"[CSV]  {len(trajectory)} pontos → {csv_path.name}")
 
             # ── Plot PNG ───────────────────────────────────────────────────
             plot_path = generate_plot(
-                trajectory, cam_pos, args.corridor, cfg, OUT_DIR)
+                trajectory, traj_times, cam_pos, args.corridor, cfg, OUT_DIR)
             print(f"[PLOT] → {plot_path.name}")
             print(f"       Transferir para PC: git pull após push do RPi5")
         else:
