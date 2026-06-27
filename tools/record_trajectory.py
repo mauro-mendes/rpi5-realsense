@@ -217,6 +217,18 @@ def generate_plot(trajectory: list, traj_times: list, cam_pos: np.ndarray,
     return out
 
 
+def _find_stable_start(pts: np.ndarray,
+                       window: int = 5, max_spread: float = 0.25) -> int:
+    """Devolve o índice do primeiro bloco de `window` pontos consecutivos
+    com dispersão espacial ≤ max_spread. Descarta ruído inicial de HSV."""
+    for i in range(len(pts) - window):
+        chunk = pts[i : i + window]
+        spread = float(np.max(np.linalg.norm(chunk - chunk.mean(axis=0), axis=1)))
+        if spread <= max_spread:
+            return i
+    return 0   # fallback: usa desde o início
+
+
 def _filter_outliers(pts: np.ndarray, max_jump: float = 0.6) -> np.ndarray:
     """Remove pontos com salto > max_jump metros em relação ao ponto anterior aceite.
     Se o resultado tiver < 20% dos pontos originais, devolve os pontos originais."""
@@ -248,6 +260,10 @@ def _resample_path(trajectory: list, n_pts: int = 200) -> "tuple | None":
     """Filtra outliers, suaviza e reamosta por distância acumulada (arco).
     Devolve (x_res, y_res) ou None se pontos insuficientes."""
     pts = np.array([[p[0], p[1]] for p in trajectory])
+    # 1. descarta ruído inicial de HSV (antes da bola entrar a sério)
+    start = _find_stable_start(pts)
+    pts = pts[start:]
+    # 2. remove saltos grandes
     pts = _filter_outliers(pts)
     if len(pts) >= 7:
         pts = _smooth_path(pts, window=7)
