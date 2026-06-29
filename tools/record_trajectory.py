@@ -473,10 +473,17 @@ def main():
                                 depth_hist.pop(0)
                             lock_count += 1
                             if lock_count >= LOCK_AFTER:
-                                cam_pos     = np.mean(depth_hist, axis=0)
+                                cam_pos = np.mean(depth_hist, axis=0)
+                                # Y físico medido com fita (ArUco depth subestima
+                                # distância da câmara à entrada → erro sistemático em Y)
+                                _sg = cfg.get("shared_geometry", {})
+                                _cam_y_yaml = _sg.get("camera_y_m")
+                                if _cam_y_yaml is not None:
+                                    cam_pos[1] = float(_cam_y_yaml)
                                 pose_locked = True
                                 print(f"\n[LOCKED] cam=({cam_pos[0]:+.3f},"
-                                      f"{cam_pos[1]:+.3f},{cam_pos[2]:+.3f})")
+                                      f"{cam_pos[1]:+.3f},{cam_pos[2]:+.3f})"
+                                      f"  [Y=YAML]")
                                 print("         A detectar bola...\n")
 
                 # HUD calibração
