@@ -1,17 +1,22 @@
 """
 plot_csv.py — Gera plots a partir de CSVs de trajectória já gravados.
 
-Aplica (ou não) a correcção de escala de profundidade sem precisar de correr
-no RPi5. Útil para testar diferentes valores de depth_scale em dados históricos.
+Dois modelos de correcção de profundidade:
+
+  Fixo  : p_corr = cam + (p_raw - cam) * depth_scale
+  Variável: p_corr = cam + (p_raw - cam) * (A + B * d_y)
+            onde d_y = p_raw[1] - cam_y  (profundidade Y medida pelo sensor)
+            Parâmetros: depth_scale_A, depth_scale_B no YAML
+
+O modelo variável compensa a não-linearidade do RealSense:
+  - ~2.5m: scale≈1.025  (pouco erro perto)
+  - ~4.8m: scale≈1.083  (zona de travessia)
+  - ~6.8m: scale≈1.132  (fim do corredor)
 
 Uso:
     python tools/plot_csv.py output/trajectory_S_esq_*.csv
-    python tools/plot_csv.py output/trajectory_S_esq_20250101_120000.csv --corridor S_esq
-    python tools/plot_csv.py output/trajectory_*.csv --depth-scale 1.15
-    python tools/plot_csv.py output/trajectory_S_esq.csv --compare  # lado a lado scale=1.0 vs YAML
-
-A fórmula de correcção é:
-    p_corrected = cam_pos + (p_raw - cam_pos) * depth_scale
+    python tools/plot_csv.py output/trajectory_S_esq_20250101.csv --corridor S_esq
+    python tools/plot_csv.py output/trajectory_*.csv --compare   # 3 colunas: raw | fixo | variável
 """
 
 import argparse
@@ -53,10 +58,26 @@ def load_csv(path: Path) -> tuple[list[np.ndarray], list[float]]:
 def apply_depth_scale(trajectory: list[np.ndarray],
                       cam_pos: np.ndarray,
                       depth_scale: float) -> list[np.ndarray]:
-    """p_corrected = cam_pos + (p_raw - cam_pos) * depth_scale"""
+    """Escala fixa: p_corr = cam + (p_raw - cam) * depth_scale"""
     if abs(depth_scale - 1.0) < 1e-6:
         return trajectory
     return [cam_pos + (p - cam_pos) * depth_scale for p in trajectory]
+
+
+def apply_depth_scale_variable(trajectory: list[np.ndarray],
+                                cam_pos: np.ndarray,
+                                A: float, B: float) -> list[np.ndarray]:
+    """Escala variável: scale(d_y) = A + B*d_y
+    d_y = profundidade Y medida (p[1] - cam_y) — o que o RealSense realmente mede.
+    Compensa a não-linearidade do erro do sensor com a distância.
+    """
+    result = []
+    for p in trajectory:
+        v   = p - cam_pos
+        d_y = v[1]          # profundidade ao longo do eixo Y (óptico para câmara horizontal)
+        scale = A + B * max(d_y, 0.1)
+        result.append(cam_pos + v * scale)
+    return result
 
 
 # ── Funções de plot (replicadas de record_trajectory.py) ──────────────────────
@@ -188,16 +209,16 @@ def plot_path(ax, trajectory, cam_pos, corridor, sg, title: str):
 # ──────────────────────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(
-        description="Plota trajectórias de CSV com correcção de depth_scale")
+        description="Plota trajectórias de CSV com correcção de profundidade")
     parser.add_argument("csvs", nargs="+", type=Path,
                         help="Ficheiros CSV de trajectória")
     parser.add_argument("--corridor", default=None,
                         choices=["U_esq", "reto_esq", "S_esq"],
                         help="Tipo de corredor (detectado pelo nome do ficheiro se omitido)")
     parser.add_argument("--depth-scale", type=float, default=None,
-                        help="Escala de profundidade (default: lido do YAML)")
+                        help="Escala fixa (override do YAML)")
     parser.add_argument("--compare", action="store_true",
-                        help="Gera plot comparativo: scale=1.0 vs depth_scale do YAML")
+                        help="3 colunas: raw | escala fixa | escala variável")
     args = parser.parse_args()
 
     cfg = load_yaml(YAML_PATH)
@@ -208,11 +229,15 @@ def main():
         float(sg.get("camera_y_m", -2.50)),
         float(sg.get("camera_z_m",  1.90)),
     ])
-    yaml_scale   = float(sg.get("depth_scale", 1.0))
-    depth_scale  = args.depth_scale if args.depth_scale is not None else yaml_scale
-    print(f"cam_pos    : {cam_pos}")
-    print(f"depth_scale: {depth_scale:.3f}  "
-          f"({'argumento' if args.depth_scale else 'de YAML'})")
+    fixed_scale = args.depth_scale if args.depth_scale is not None \
+                  else float(sg.get("depth_scale", 1.0))
+    A = float(sg.get("depth_scale_A", 1.0))
+    B = float(sg.get("depth_scale_B", 0.0))
+
+    print(f"cam_pos      : {cam_pos}")
+    print(f"scale fixo   : {fixed_scale:.3f}")
+    print(f"scale variável: A={A:.4f}  B={B:.4f}  "
+          f"[scale(2.5m)={A+B*2.5:.3f}  scale(5m)={A+B*5:.3f}  scale(7m)={A+B*7:.3f}]")
 
     OUT_DIR.mkdir(exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -222,7 +247,6 @@ def main():
             print(f"[ERRO] não encontrado: {csv_path}")
             continue
 
-        # detecta corredor pelo nome do ficheiro se não especificado
         corridor_key = args.corridor
         if corridor_key is None:
             for k in ["U_esq", "reto_esq", "S_esq"]:
@@ -236,49 +260,63 @@ def main():
         corridor = cfg["corridors"].get(corridor_key, {})
         print(f"\n{csv_path.name}  →  corredor={corridor_key}")
 
-        traj_raw, traj_times = load_csv(csv_path)
-        print(f"  {len(traj_raw)} pontos  |  "
-              f"y_raw=[{min(p[1] for p in traj_raw):.2f}, "
-              f"{max(p[1] for p in traj_raw):.2f}]")
+        traj_raw,  traj_times = load_csv(csv_path)
+        traj_fix  = apply_depth_scale(traj_raw, cam_pos, fixed_scale)
+        traj_var  = apply_depth_scale_variable(traj_raw, cam_pos, A, B)
 
-        traj_corr = apply_depth_scale(traj_raw, cam_pos, depth_scale)
-        print(f"  y_corrected=[{min(p[1] for p in traj_corr):.2f}, "
-              f"{max(p[1] for p in traj_corr):.2f}]  (scale={depth_scale:.3f})")
+        def _yrange(traj):
+            ys = [p[1] for p in traj]
+            return f"[{min(ys):.2f}, {max(ys):.2f}]"
 
-        stem = csv_path.stem  # ex: trajectory_S_esq_20250101
+        print(f"  {len(traj_raw)} pontos")
+        print(f"  y_raw      : {_yrange(traj_raw)}")
+        print(f"  y_fixo     : {_yrange(traj_fix)}  (scale={fixed_scale:.3f})")
+        print(f"  y_variável : {_yrange(traj_var)}  (A={A:.3f} B={B:.4f})")
+
+        stem = csv_path.stem
 
         if args.compare:
-            # ── 4 subplots: raw scatter | corr scatter | raw path | corr path
-            fig, axes = plt.subplots(2, 2, figsize=(14, 20))
-            fig.suptitle(f"{stem}  —  depth_scale comparação (1.0 vs {depth_scale:.3f})",
+            # ── 3 colunas × 2 linhas: scatter em cima, caminho em baixo
+            fig, axes = plt.subplots(2, 3, figsize=(21, 20))
+            fig.suptitle(f"{stem}  —  comparação de modelos de correcção",
                          fontsize=12)
-            plot_scatter(axes[0, 0], traj_raw,  traj_times, cam_pos, corridor, sg,
-                         f"Scatter — scale=1.0 (original)")
-            plot_scatter(axes[0, 1], traj_corr, traj_times, cam_pos, corridor, sg,
-                         f"Scatter — scale={depth_scale:.3f}")
-            plot_path(axes[1, 0], traj_raw,  cam_pos, corridor, sg,
-                      f"Caminho — scale=1.0 (original)")
-            plot_path(axes[1, 1], traj_corr, cam_pos, corridor, sg,
-                      f"Caminho — scale={depth_scale:.3f}")
+
+            plot_scatter(axes[0, 0], traj_raw, traj_times, cam_pos, corridor, sg,
+                         "Scatter — sem correcção (raw)")
+            plot_scatter(axes[0, 1], traj_fix, traj_times, cam_pos, corridor, sg,
+                         f"Scatter — escala fixa ({fixed_scale:.3f})")
+            plot_scatter(axes[0, 2], traj_var, traj_times, cam_pos, corridor, sg,
+                         f"Scatter — escala variável (A={A:.3f} B={B:.4f})")
+
+            plot_path(axes[1, 0], traj_raw, cam_pos, corridor, sg,
+                      "Caminho — sem correcção (raw)")
+            plot_path(axes[1, 1], traj_fix, cam_pos, corridor, sg,
+                      f"Caminho — escala fixa ({fixed_scale:.3f})")
+            plot_path(axes[1, 2], traj_var, cam_pos, corridor, sg,
+                      f"Caminho — escala variável (A={A:.3f} B={B:.4f})")
+
             fig.tight_layout()
             out = OUT_DIR / f"compare_{stem}_{ts}.png"
             fig.savefig(str(out), dpi=150)
             plt.close(fig)
-            print(f"  [PLOT] comparação → {out.name}")
+            print(f"  [PLOT] comparação (3×2) → {out.name}")
 
         else:
-            # ── scatter + path corrected
+            # modo padrão: usa escala variável se A/B configurados, senão fixa
+            traj_out  = traj_var if B > 0 else traj_fix
+            model_lbl = f"var(A={A:.3f},B={B:.4f})" if B > 0 else f"fixo({fixed_scale:.3f})"
+
             fig_s, ax_s = plt.subplots(figsize=(6, 10))
-            plot_scatter(ax_s, traj_corr, traj_times, cam_pos, corridor, sg,
-                         f"Trajectória — {corridor_key}  (scale={depth_scale:.3f})")
+            plot_scatter(ax_s, traj_out, traj_times, cam_pos, corridor, sg,
+                         f"Trajectória — {corridor_key}  [{model_lbl}]")
             fig_s.tight_layout()
             out_s = OUT_DIR / f"trajectory_{stem}_{ts}.png"
             fig_s.savefig(str(out_s), dpi=150)
             plt.close(fig_s)
 
             fig_p, ax_p = plt.subplots(figsize=(6, 10))
-            plot_path(ax_p, traj_corr, cam_pos, corridor, sg,
-                      f"Caminho — {corridor_key}  (scale={depth_scale:.3f})")
+            plot_path(ax_p, traj_out, cam_pos, corridor, sg,
+                      f"Caminho — {corridor_key}  [{model_lbl}]")
             fig_p.tight_layout()
             out_p = OUT_DIR / f"path_{stem}_{ts}.png"
             fig_p.savefig(str(out_p), dpi=150)

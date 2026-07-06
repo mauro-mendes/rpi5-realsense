@@ -49,7 +49,13 @@ shared_geometry:
   camera_x_m: 1.80
   camera_y_m: -2.50
   camera_z_m: 1.90
-  depth_scale: 1.13   # compensação da subestimação do RealSense (~12% a 7m)
+  depth_scale: 1.13       # escala fixa (fallback; usado em record_trajectory.py)
+  # Modelo de escala variável: scale(d) = A + B*d  onde d = profundidade Y medida
+  # Calibrado com 2 pontos conhecidos do S_esq (20260630):
+  #   d=2.44m (início)  → scale=1.025   (y_raw=-0.06 → y_true≈0)
+  #   d=6.80m (final)   → scale=1.132   (y_raw=4.30  → y_true=5.2)
+  depth_scale_A: 0.965
+  depth_scale_B: 0.0245
 
 corridors:
 
