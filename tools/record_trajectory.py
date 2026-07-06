@@ -135,11 +135,13 @@ def detect_ball(frame_bgr):
 
 
 def ball_world_pos(px, py, depth_f, cam_pos, intr,
-                   depth_scale: float = 1.0) -> "np.ndarray | None":
+                   depth_scale: float = 1.0,
+                   scale_A: float = 0.0,
+                   scale_B: float = 0.0) -> "np.ndarray | None":
     """Pixel + depth → posição (x,y,z) no mundo.
 
-    depth_scale compensa a subestimação sistemática do RealSense a longas
-    distâncias (tipicamente ~12% a 7m). Lido de shared_geometry.depth_scale.
+    Se scale_A > 0: usa modelo variável scale(d) = A + B*d  (preferido).
+    Caso contrário: usa depth_scale fixo (fallback).
     """
     samples = []
     for dy in range(-2, 3):
@@ -154,7 +156,8 @@ def ball_world_pos(px, py, depth_f, cam_pos, intr,
     d     = float(np.median(samples))
     p_cam = np.array(rs.rs2_deproject_pixel_to_point(
         intr, [float(px), float(py)], d))
-    p_cam = p_cam * depth_scale   # corrige escala de profundidade
+    sc = (scale_A + scale_B * max(p_cam[2], 0.1)) if scale_A > 0 else depth_scale
+    p_cam = p_cam * sc
     return cam_pos + R_INIT.T @ p_cam
 
 
@@ -370,9 +373,16 @@ def main():
     marker_half = marker_size / 2.0
     _sg          = cfg.get("shared_geometry", {})
     depth_scale  = float(_sg.get("depth_scale", 1.0))
+    scale_A      = float(_sg.get("depth_scale_A", 0.0))
+    scale_B      = float(_sg.get("depth_scale_B", 0.0))
     print(f"Corredor : {args.corridor}")
-    print(f"depth_scale: {depth_scale:.3f}  "
-          f"({'de YAML' if _sg.get('depth_scale') else 'default=1.0'})")
+    if scale_A > 0:
+        print(f"depth_scale variável: A={scale_A:.4f}  B={scale_B:.6f}")
+        print(f"  scale(2.5m)={scale_A+scale_B*2.5:.3f}"
+              f"  scale(5.0m)={scale_A+scale_B*5.0:.3f}"
+              f"  scale(7.5m)={scale_A+scale_B*7.5:.3f}")
+    else:
+        print(f"depth_scale fixo: {depth_scale:.3f}")
     hsv_src = f"(de {_HSV_CFG.name})" if _HSV_CFG.exists() else "(default)"
     print(f"Bola HSV : H=[{BALL_HSV_LOW[0]},{BALL_HSV_HIGH[0]}]"
           f"  S=[{BALL_HSV_LOW[1]},{BALL_HSV_HIGH[1]}]"
@@ -516,7 +526,8 @@ def main():
                     bx, by, brad, ball_mask = result
                     if depth_f:
                         ball_world = ball_world_pos(
-                            bx, by, depth_f, cam_pos, intr, depth_scale)
+                            bx, by, depth_f, cam_pos, intr,
+                            depth_scale, scale_A, scale_B)
 
                     # overlay bola
                     cv2.circle(frame, (bx, by), brad, (0, 255, 0), 2)
