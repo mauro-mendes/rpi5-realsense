@@ -199,15 +199,19 @@ def generate_plot(trajectory: list, traj_times: list, cam_pos: np.ndarray,
             markersize=11, zorder=4,
             label=f"Câmara ({cam_pos[0]:.2f}, {cam_pos[1]:.2f})")
 
-    # Trajectória (cores por tempo em segundos)
+    # Trajectória — clip ao corredor (y ∈ [0, total_d])
     if trajectory:
-        xs = [p[0] for p in trajectory]
-        ys = [p[1] for p in trajectory]
-        sc = ax.scatter(xs, ys, c=traj_times, cmap="plasma",
-                        s=10, zorder=4, label="Trajectória")
-        plt.colorbar(sc, ax=ax, label="Tempo (s)", shrink=0.6)
-        ax.plot(xs[0],  ys[0],  "go", markersize=11, zorder=5, label="Início")
-        ax.plot(xs[-1], ys[-1], "ro", markersize=11, zorder=5, label="Fim")
+        pairs = [(p, t) for p, t in zip(trajectory, traj_times)
+                 if 0.0 <= p[1] <= total_d]
+        if pairs:
+            xs = [p[0] for p, _ in pairs]
+            ys = [p[1] for p, _ in pairs]
+            ts = [t    for _, t in pairs]
+            sc = ax.scatter(xs, ys, c=ts, cmap="plasma",
+                            s=10, zorder=4, label="Trajectória")
+            plt.colorbar(sc, ax=ax, label="Tempo (s)", shrink=0.6)
+            ax.plot(xs[0],  ys[0],  "go", markersize=11, zorder=5, label="Início")
+            ax.plot(xs[-1], ys[-1], "ro", markersize=11, zorder=5, label="Fim")
 
     ax.set_xlim(-0.3, total_w + 0.3)
     ax.set_ylim(cam_pos[1] - 0.4, total_d + 0.4)
@@ -265,15 +269,27 @@ def _smooth_path(pts: np.ndarray, window: int = 7) -> np.ndarray:
     return out
 
 
-def _resample_path(trajectory: list, n_pts: int = 200) -> "tuple | None":
-    """Filtra outliers, suaviza e reamosta por distância acumulada (arco).
-    Devolve (x_res, y_res) ou None se pontos insuficientes."""
+def _clip_corridor(pts: np.ndarray,
+                   y_min: float = 0.0,
+                   y_max: float = 6.0) -> np.ndarray:
+    """Remove pontos fora dos limites físicos do corredor (eixo Y)."""
+    mask = (pts[:, 1] >= y_min) & (pts[:, 1] <= y_max)
+    return pts[mask]
+
+
+def _resample_path(trajectory: list, n_pts: int = 200,
+                   y_min: float = 0.0,
+                   y_max: float = 6.0) -> "tuple | None":
+    """Filtra outliers, clipa aos limites do corredor, suaviza e reamosta
+    por distância acumulada (arco). Devolve (x_res, y_res) ou None."""
     pts = np.array([[p[0], p[1]] for p in trajectory])
     # 1. descarta ruído inicial de HSV (antes da bola entrar a sério)
     start = _find_stable_start(pts)
     pts = pts[start:]
     # 2. remove saltos grandes
     pts = _filter_outliers(pts)
+    # 3. clip aos limites físicos do corredor (y_min=0, y_max=total_depth)
+    pts = _clip_corridor(pts, y_min, y_max)
     if len(pts) >= 7:
         pts = _smooth_path(pts, window=7)
     if len(pts) < 2:
@@ -327,8 +343,8 @@ def generate_path_plot(trajectory: list, cam_pos: np.ndarray,
             markersize=11, zorder=4,
             label=f"Câmara ({cam_pos[0]:.2f}, {cam_pos[1]:.2f})")
 
-    # Caminho reamostrado
-    res = _resample_path(trajectory) if trajectory else None
+    # Caminho reamostrado — clip ao corredor (y ∈ [0, total_d])
+    res = _resample_path(trajectory, y_max=total_d) if trajectory else None
     if res is not None:
         x_res, y_res = res
         ax.plot(x_res, y_res, color="steelblue", linewidth=1.5,
