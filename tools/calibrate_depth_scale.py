@@ -294,6 +294,11 @@ def main():
                 if len(calib_pts) >= 2:
                     A, B, r2 = fit_model(calib_pts)
                     print(f"  Modelo: A={A:.4f}  B={B:.6f}  R²={r2:.4f}")
+                    print(f"  [{len(calib_pts)} pontos]  Prima F na janela para terminar"
+                          f" ou ESPACO para mais um ponto.")
+                else:
+                    print(f"  [{len(calib_pts)} ponto]  Precisa de pelo menos 2."
+                          f" Prima ESPACO na janela para o proximo ponto.")
 
                 # ── Posição do marker (opcional) ──────────────────────────
                 if args.update_markers:
