@@ -134,8 +134,13 @@ def detect_ball(frame_bgr):
     return int(bx), int(by), int(radius), mask
 
 
-def ball_world_pos(px, py, depth_f, cam_pos, intr) -> "np.ndarray | None":
-    """Pixel + depth → posição (x,y,z) no mundo."""
+def ball_world_pos(px, py, depth_f, cam_pos, intr,
+                   depth_scale: float = 1.0) -> "np.ndarray | None":
+    """Pixel + depth → posição (x,y,z) no mundo.
+
+    depth_scale compensa a subestimação sistemática do RealSense a longas
+    distâncias (tipicamente ~12% a 7m). Lido de shared_geometry.depth_scale.
+    """
     samples = []
     for dy in range(-2, 3):
         for dx in range(-2, 3):
@@ -149,6 +154,7 @@ def ball_world_pos(px, py, depth_f, cam_pos, intr) -> "np.ndarray | None":
     d     = float(np.median(samples))
     p_cam = np.array(rs.rs2_deproject_pixel_to_point(
         intr, [float(px), float(py)], d))
+    p_cam = p_cam * depth_scale   # corrige escala de profundidade
     return cam_pos + R_INIT.T @ p_cam
 
 
@@ -362,7 +368,11 @@ def main():
     OUT_DIR.mkdir(exist_ok=True)
     markers, marker_size, cfg = load_yaml(YAML_PATH)
     marker_half = marker_size / 2.0
+    _sg          = cfg.get("shared_geometry", {})
+    depth_scale  = float(_sg.get("depth_scale", 1.0))
     print(f"Corredor : {args.corridor}")
+    print(f"depth_scale: {depth_scale:.3f}  "
+          f"({'de YAML' if _sg.get('depth_scale') else 'default=1.0'})")
     hsv_src = f"(de {_HSV_CFG.name})" if _HSV_CFG.exists() else "(default)"
     print(f"Bola HSV : H=[{BALL_HSV_LOW[0]},{BALL_HSV_HIGH[0]}]"
           f"  S=[{BALL_HSV_LOW[1]},{BALL_HSV_HIGH[1]}]"
@@ -505,7 +515,8 @@ def main():
                 if result is not None:
                     bx, by, brad, ball_mask = result
                     if depth_f:
-                        ball_world = ball_world_pos(bx, by, depth_f, cam_pos, intr)
+                        ball_world = ball_world_pos(
+                            bx, by, depth_f, cam_pos, intr, depth_scale)
 
                     # overlay bola
                     cv2.circle(frame, (bx, by), brad, (0, 255, 0), 2)
