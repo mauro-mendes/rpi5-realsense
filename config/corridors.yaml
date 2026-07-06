@@ -119,6 +119,10 @@ corridors:
         pos: [0.425, 5.515, 2.295]
         facing: S
         note: "parede do fundo da extensão, lado direito (arm2)"
+      - id: 26
+        pos: [1.280, 0.150, 1.900]
+        facing: S
+        note: "entrada — topo parede esquerda da ilha (~2.65m da câmara; MEDIR e actualizar pos)"
 
   reto_esq:
     description: "Corredor reto — parede móvel posição 2 (fecha arm2, arm1 livre 5.5m)"
@@ -186,6 +190,10 @@ corridors:
         pos: [0.425, 5.515, 2.295]
         facing: S
         note: "parede do fundo da extensão, lado direito (arm2)"
+      - id: 26
+        pos: [1.280, 0.150, 1.900]
+        facing: S
+        note: "entrada — topo parede esquerda da ilha (~2.65m da câmara; MEDIR e actualizar pos)"
 
   S_esq:
     description: "Corredor S — parede móvel posição 3 (fecha arm1 na base da ilha)"
@@ -269,4 +277,8 @@ corridors:
       - id: 25
         pos: [0.425, 5.515, 2.295]
         facing: S
+      - id: 26
+        pos: [1.280, 0.150, 1.900]
+        facing: S
+        note: "entrada — topo parede esquerda da ilha (~2.65m da câmara; MEDIR e actualizar pos)"
         note: "parede do fundo da extensão, lado direito (arm2)"
