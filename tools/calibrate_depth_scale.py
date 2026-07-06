@@ -277,15 +277,25 @@ def main():
                 d_rs_med = float(np.median(depth_buf))
                 print(f"\n[Amostrado] profundidade RealSense: {d_rs_med:.4f} m"
                       f"  ({len(depth_buf)} amostras, mediana)")
+                print(f"  (escreva 'c' para cancelar este ponto)")
+                d_laser = None
                 while True:
                     try:
                         raw = input("  Distância trena laser (m): ").strip().replace(",", ".")
+                        if raw.lower() == "c":
+                            print("  → ponto cancelado.")
+                            break
                         d_laser = float(raw)
                         if d_laser > 0.1:
                             break
                         print("  → valor deve ser > 0")
                     except ValueError:
-                        print("  → formato inválido, ex: 2.50")
+                        print("  → formato inválido, ex: 2.50  (ou 'c' para cancelar)")
+
+                if d_laser is None:
+                    state[0] = "LIVE"
+                    depth_buf.clear()
+                    continue
 
                 calib_pts.append((d_rs_med, d_laser))
                 sc_i = d_laser / d_rs_med
@@ -346,6 +356,10 @@ def main():
 
             if key == ord(" ") and state[0] == "LIVE":
                 state[0] = "SAMPLING"
+                depth_buf.clear()
+            elif key == 27 and state[0] == "SAMPLING":   # ESC cancela sampling
+                print("  → sampling cancelado.")
+                state[0] = "LIVE"
                 depth_buf.clear()
             elif key in (ord("q"), ord("Q")):
                 print("\nSaindo sem guardar.")
