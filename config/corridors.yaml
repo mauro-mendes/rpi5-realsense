@@ -49,10 +49,11 @@ shared_geometry:
   camera_x_m: 1.80
   camera_y_m: -2.50
   camera_z_m: 1.90
-  depth_scale: 1.05       # escala fixa (fallback)
-  # Modelo de escala variável: scale(d) = A + B*d  onde d = profundidade medida
-  # Calibrado com 7 pontos laser (20260706, excluindo marker 22 — ângulo lateral grande):
-  #   R²=0.04 (escala quase constante ~1.04-1.05 ao longo do corredor)
+  depth_scale: 1.13       # escala fixa (fallback; usado em record_trajectory.py)
+  # Modelo de escala variável: scale(d) = A + B*d  onde d = profundidade Y medida
+  # Calibrado com 2 pontos conhecidos do S_esq (20260630):
+  #   d=2.44m (início)  → scale=1.025   (y_raw=-0.06 → y_true≈0)
+  #   d=6.80m (final)   → scale=1.132   (y_raw=4.30  → y_true=5.2)
   depth_scale_A: 1.0273
   depth_scale_B: 0.003919
 
@@ -103,11 +104,11 @@ corridors:
         facing: S
         note: "topo da ilha, canto direito (face inferior)"
       - id: 22
-        pos: [3.425, 3.512, 1.970]
+        pos: [3.420, 3.506, 1.969]
         facing: S
         note: "topo da parede do fundo, sobre arm1"
       - id: 23
-        pos: [1.310, 3.295, 1.973]
+        pos: [1.309, 3.293, 1.977]
         facing: S
         note: "topo da parede do fundo, sobre arm2"
       - id: 24
@@ -121,7 +122,7 @@ corridors:
       - id: 26
         pos: [1.238, 0.060, 1.704]
         facing: S
-        note: "entrada — topo parede esquerda da ilha (calibrado laser 20260706)"
+        note: "entrada — topo parede esquerda da ilha (~2.65m da câmara; MEDIR e actualizar pos)"
 
   reto_esq:
     description: "Corredor reto — parede móvel posição 2 (fecha arm2, arm1 livre 5.5m)"
@@ -174,11 +175,11 @@ corridors:
         facing: S
         note: "topo da ilha, canto direito (face inferior)"
       - id: 22
-        pos: [3.425, 3.512, 1.970]
+        pos: [3.420, 3.506, 1.969]
         facing: S
         note: "topo da parede do fundo, sobre arm1"
       - id: 23
-        pos: [1.310, 3.295, 1.973]
+        pos: [1.309, 3.293, 1.977]
         facing: S
         note: "topo da parede do fundo, sobre arm2"
       - id: 24
@@ -192,7 +193,7 @@ corridors:
       - id: 26
         pos: [1.238, 0.060, 1.704]
         facing: S
-        note: "entrada — topo parede esquerda da ilha (calibrado laser 20260706)"
+        note: "entrada — topo parede esquerda da ilha (~2.65m da câmara; MEDIR e actualizar pos)"
 
   S_esq:
     description: "Corredor S — parede móvel posição 3 (fecha arm1 na base da ilha)"
@@ -262,11 +263,11 @@ corridors:
         facing: S
         note: "topo da ilha, canto direito (face inferior)"
       - id: 22
-        pos: [3.425, 3.512, 1.970]
+        pos: [3.420, 3.506, 1.969]
         facing: S
         note: "topo da parede do fundo, sobre arm1"
       - id: 23
-        pos: [1.310, 3.295, 1.973]
+        pos: [1.309, 3.293, 1.977]
         facing: S
         note: "topo da parede do fundo, sobre arm2"
       - id: 24
@@ -280,4 +281,4 @@ corridors:
       - id: 26
         pos: [1.238, 0.060, 1.704]
         facing: S
-        note: "entrada — topo parede esquerda da ilha (calibrado laser 20260706)"
+        note: "entrada — topo parede esquerda da ilha (~2.65m da câmara; MEDIR e actualizar pos)"
