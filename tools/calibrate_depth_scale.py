@@ -214,7 +214,7 @@ def main():
     print("[OK] RealSense 640×480 @ 30fps")
     print("     Colocar alvo branco em frente à câmara e seguir instruções.\n")
 
-    WIN = "Calibração depth_scale — ESPACO=amostrar  F=finalizar  Q=sair"
+    WIN = "calibrate_depth_scale  SPACE=sample  F=finish  Q=quit"
     cv2.namedWindow(WIN, cv2.WINDOW_NORMAL)
     cv2.resizeWindow(WIN, 960, 540)
 
