@@ -3,7 +3,7 @@ record_trajectory.py — Ground truth: bola verde → trajectória top-view
 
 Fases:
   1. Calibração ArUco automática (mesma lógica de test_aruco_pose.py)
-     → aguarda CAM LOCKED (~5 depth válidos)
+     → aguarda CAM LOCKED (acumula WARMUP_SAMPLES estimativas, usa mediana)
   2. Após lock: detecta bola verde por HSV + depth, grava posições no mundo
   3. Q=sair → salva CSV + gera PNG top-view (corredor + trajectória)
 
@@ -44,8 +44,8 @@ OUT_DIR   = Path(__file__).parent.parent / "output"
 
 # ── ArUco ─────────────────────────────────────────────────────────────────────
 DICT_TYPE   = cv2.aruco.DICT_4X4_50
-MIN_MARKERS = 4
-LOCK_AFTER  = 5          # depth válidos consecutivos para fixar pose
+MIN_MARKERS    = 4
+WARMUP_SAMPLES = 30   # estimativas acumuladas para fixar pose (mediana estável)
 
 # ── Detecção da bola (HSV verde) ──────────────────────────────────────────────
 # Valores lidos de config/ball_hsv.yaml (gerado por calibrate_ball_hsv.py).
@@ -423,10 +423,9 @@ def main():
         args.headless = True
 
     # ── Estado ────────────────────────────────────────────────────────────────
-    lock_count  = 0
-    pose_locked = False
-    cam_pos     = np.zeros(3)
-    depth_hist: list[np.ndarray] = []
+    pose_locked      = False
+    cam_pos          = np.zeros(3)
+    cam_pos_samples: list[np.ndarray] = []
 
     trajectory:  list[np.ndarray] = []
     traj_times:  list[float]      = []   # segundos desde início da gravação
@@ -488,28 +487,22 @@ def main():
                             det_ids, corners_list, markers,
                             marker_half, depth_f, intr)
                         if est is not None and est[1] < 0 and est[2] > 1.0:
-                            depth_hist.append(est)
-                            if len(depth_hist) > 20:
-                                depth_hist.pop(0)
-                            lock_count += 1
-                            if lock_count >= LOCK_AFTER:
-                                cam_pos = np.mean(depth_hist, axis=0)
-                                # Y físico medido com fita (ArUco depth subestima
-                                # distância da câmara à entrada → erro sistemático em Y)
-                                _sg = cfg.get("shared_geometry", {})
+                            cam_pos_samples.append(est)
+                            if len(cam_pos_samples) >= WARMUP_SAMPLES:
+                                cam_pos = np.median(cam_pos_samples, axis=0)
                                 _cam_y_yaml = _sg.get("camera_y_m")
                                 if _cam_y_yaml is not None:
                                     cam_pos[1] = float(_cam_y_yaml)
                                 pose_locked = True
                                 print(f"\n[LOCKED] cam=({cam_pos[0]:+.3f},"
                                       f"{cam_pos[1]:+.3f},{cam_pos[2]:+.3f})"
-                                      f"  [Y=YAML]")
+                                      f"  [Y=YAML  {WARMUP_SAMPLES} amostras]")
                                 print("         A detectar bola...\n")
 
                 # HUD calibração
                 clr = (80, 200, 80) if n_known >= MIN_MARKERS else (80, 80, 255)
                 cv2.putText(frame,
-                            f"CALIBRANDO — calib {lock_count}/{LOCK_AFTER} "
+                            f"CALIBRANDO — {len(cam_pos_samples)}/{WARMUP_SAMPLES} "
                             f"mkr={n_known}",
                             (10, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.7, clr, 2)
                 cv2.putText(frame,
