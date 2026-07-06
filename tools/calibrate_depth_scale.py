@@ -4,20 +4,28 @@ calibrate_depth_scale.py — Calibra o modelo scale(d) = A + B*d do RealSense.
 Usa uma trena laser para obter distâncias de referência precisas e compara
 com as leituras brutas do sensor, ajustando um modelo linear de escala.
 
+Com --update-markers, regista também a posição 3D de cada ArUco medido:
+  y = camera_y + d_laser  (calculado automaticamente)
+  x = medido da parede esquerda
+  z = z_base_marker + 0.095m (centro do marker de 190mm)
+
 Procedimento (RPi5 com monitor):
   1. Colocar alvo (papel A4 branco) a distâncias Y conhecidas do corredor.
-     Sugestão: 2.5m (entrada), 4.5m (aruco 20/21), 6m (aruco 22/23), 8m (fundo)
+     Sugestão: centrar cada medição num ArUco para calibrar escala E posição.
   2. Mover cursor ao centro do alvo — profundidade actualiza em tempo real
   3. ESPAÇO ou clique esquerdo → amostra 30 frames (mediana)
   4. Terminal: introduzir distância medida pela trena laser em metros
-  5. Repetir para 2-5 alvos a distâncias diferentes
+     Com --update-markers: também pede ID do ArUco, x e z_base
+  5. Repetir para 2-7 alvos (mínimo 2 para escala)
   6. F → calcula A, B, imprime resultado, pergunta se guarda no YAML
   7. Q → sair sem guardar
 
 Uso:
     conda activate rpi5-realsense
     python tools/calibrate_depth_scale.py
-    python tools/calibrate_depth_scale.py --save   # guarda sem confirmar
+    python tools/calibrate_depth_scale.py --save
+    python tools/calibrate_depth_scale.py --update-markers
+    python tools/calibrate_depth_scale.py --update-markers --save
 """
 
 import argparse
@@ -29,9 +37,10 @@ import numpy as np
 import pyrealsense2 as rs
 import yaml
 
-YAML_PATH  = Path(__file__).parent.parent / "config" / "corridors.yaml"
-SAMPLE_N   = 30   # frames por ponto de calibração
-PATCH_HALF = 3    # amostra patch 7×7 (pixels) à volta do cursor
+YAML_PATH    = Path(__file__).parent.parent / "config" / "corridors.yaml"
+SAMPLE_N     = 30    # frames por ponto de calibração
+PATCH_HALF   = 3     # amostra patch 7×7 (pixels) à volta do cursor
+MARKER_HALF  = 0.095 # metade de 190mm → centro do marker a partir da base
 
 # ── YAML ──────────────────────────────────────────────────────────────────────
 def load_yaml(path: Path) -> dict:
@@ -47,6 +56,31 @@ def update_yaml(path: Path, A: float, B: float) -> None:
     text = re.sub(r"(depth_scale_B:\s*)[\d.]+", f"\\g<1>{B:.6f}", text)
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
+
+
+def update_marker_positions(path: Path, measurements: dict) -> list:
+    """
+    Actualiza pos: [x, y, z] de cada marker medido em todos os corredores.
+    measurements: {marker_id: [x, y, z]}
+    Devolve lista de IDs actualizados.
+    """
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+
+    updated = []
+    for mid, pos in measurements.items():
+        x, y, z = pos
+        # Substitui pos em todas as ocorrências do marker (3 corredores)
+        pattern = rf"(- id:\s*{mid}[ \t]*\n[ \t]+pos:\s*\[)[^\]]*(\])"
+        new_pos = rf"\g<1>{x:.3f}, {y:.3f}, {z:.3f}\2"
+        new_text, n = re.subn(pattern, new_pos, text)
+        if n > 0:
+            text = new_text
+            updated.append((mid, n, pos))
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+    return updated
 
 
 # ── Cálculo ───────────────────────────────────────────────────────────────────
@@ -99,7 +133,8 @@ def _put(img, text, pos, scale=0.52, color=_WHITE, thick=1):
     cv2.putText(img, text, pos, _F, scale, color, thick, cv2.LINE_AA)
 
 
-def draw_hud(frame, cursor, d_live, calib_pts, state, progress, A, B, r2):
+def draw_hud(frame, cursor, d_live, calib_pts, state, progress, A, B, r2,
+             marker_meas=None):
     h, w = frame.shape[:2]
     cx, cy = cursor
 
@@ -138,6 +173,12 @@ def draw_hud(frame, cursor, d_live, calib_pts, state, progress, A, B, r2):
              f"  scale={sc_i:.4f}  residuo={err_cm:+.1f}cm",
              (8, y0 + 18 * (i + 1)), scale=0.42, color=col)
 
+    # Markers medidos
+    if marker_meas:
+        ids_str = " ".join(str(mid) for mid in sorted(marker_meas))
+        _put(frame, f"Markers: {ids_str}",
+             (8, h - 34), scale=0.44, color=_CYAN)
+
     # Modelo actual
     if len(calib_pts) >= 2:
         r2_s = f"{r2:.4f}" if not np.isnan(r2) else "n/a"
@@ -158,7 +199,9 @@ def draw_hud(frame, cursor, d_live, calib_pts, state, progress, A, B, r2):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--save", action="store_true",
-                        help="Guarda A/B em corridors.yaml sem confirmação")
+                        help="Guarda A/B (e posições de markers) sem confirmação")
+    parser.add_argument("--update-markers", action="store_true",
+                        help="Pede ID+x+z de cada ArUco medido e actualiza pos no YAML")
     args = parser.parse_args()
 
     # RealSense
@@ -175,12 +218,16 @@ def main():
     cv2.namedWindow(WIN, cv2.WINDOW_NORMAL)
     cv2.resizeWindow(WIN, 960, 540)
 
+    cfg_yaml = load_yaml(YAML_PATH)
+    cam_y    = float(cfg_yaml.get("shared_geometry", {}).get("camera_y_m", -2.50))
+
     # Estado mutável
-    cursor     = [320, 240]
-    state      = ["LIVE"]        # lista para permitir mutação em closure
-    depth_buf  : list[float] = []
-    calib_pts  : list[tuple]  = []
-    A, B, r2   = 1.0, 0.0, float("nan")
+    cursor          = [320, 240]
+    state           = ["LIVE"]        # lista para permitir mutação em closure
+    depth_buf       : list[float] = []
+    calib_pts       : list[tuple]  = []
+    marker_meas     : dict[int, list[float]] = {}   # {id: [x, y, z]}
+    A, B, r2        = 1.0, 0.0, float("nan")
 
     def on_mouse(event, x, y, _flags, _param):
         cursor[0], cursor[1] = x, y
@@ -223,7 +270,7 @@ def main():
             # ── INPUT: bloqueia para leitura do terminal ───────────────────
             if state[0] == "INPUT":
                 draw_hud(frame, tuple(cursor), d_live, calib_pts,
-                         "INPUT", 1.0, A, B, r2)
+                         "INPUT", 1.0, A, B, r2, marker_meas)
                 cv2.imshow(WIN, frame)
                 cv2.waitKey(1)
 
@@ -248,12 +295,45 @@ def main():
                     A, B, r2 = fit_model(calib_pts)
                     print(f"  Modelo: A={A:.4f}  B={B:.6f}  R²={r2:.4f}")
 
+                # ── Posição do marker (opcional) ──────────────────────────
+                if args.update_markers:
+                    raw_id = input(
+                        "  ArUco ID para registar posição (Enter=ignorar): "
+                    ).strip()
+                    if raw_id.isdigit():
+                        mid = int(raw_id)
+                        # y calculado da câmara + profundidade laser
+                        y_m = cam_y + d_laser
+                        print(f"  y calculado: {cam_y:.3f} + {d_laser:.3f} = {y_m:.3f} m")
+                        while True:
+                            try:
+                                x_m = float(
+                                    input("  x da parede ESQUERDA (m): ")
+                                    .strip().replace(",", ".")
+                                )
+                                break
+                            except ValueError:
+                                print("  → ex: 1.28")
+                        while True:
+                            try:
+                                z_base = float(
+                                    input("  z do CHÃO até base do marker (m): ")
+                                    .strip().replace(",", ".")
+                                )
+                                break
+                            except ValueError:
+                                print("  → ex: 1.805")
+                        z_m = z_base + MARKER_HALF
+                        marker_meas[mid] = [x_m, y_m, z_m]
+                        print(f"  → ID {mid}  pos=[{x_m:.3f}, {y_m:.3f}, {z_m:.3f}]"
+                              f"  (z_base={z_base:.3f} + {MARKER_HALF}m)")
+
                 state[0] = "LIVE"
                 depth_buf.clear()
 
             # ── Render ────────────────────────────────────────────────────
             draw_hud(frame, tuple(cursor), d_live, calib_pts,
-                     state[0], progress, A, B, r2)
+                     state[0], progress, A, B, r2, marker_meas)
             cv2.imshow(WIN, frame)
             key = cv2.waitKey(1) & 0xFF
 
@@ -314,17 +394,41 @@ def main():
               f"  diff={abs(y_pred-y_true)*100:.1f}cm")
     print()
 
+    # ── Posições de markers medidas ───────────────────────────────────────────
+    if marker_meas:
+        print(f"\n{'─'*58}")
+        print(f"  POSIÇÕES DE MARKERS MEDIDAS  ({len(marker_meas)} markers)")
+        print(f"{'─'*58}")
+        for mid, pos in sorted(marker_meas.items()):
+            print(f"  ID {mid:2d}  →  pos=[{pos[0]:.3f}, {pos[1]:.3f}, {pos[2]:.3f}]")
+        print(f"{'─'*58}")
+
     # Guardar
     if args.save:
         update_yaml(YAML_PATH, A, B)
-        print(f"[SALVO] {YAML_PATH.name} actualizado.")
+        print(f"[SALVO] escala → {YAML_PATH.name}")
+        if marker_meas:
+            updated = update_marker_positions(YAML_PATH, marker_meas)
+            for mid, n, pos in updated:
+                print(f"[SALVO] marker {mid}  pos={[round(v,3) for v in pos]}"
+                      f"  ({n} ocorrências)")
     else:
         resp = input("Guardar A/B em corridors.yaml? (s/n): ").strip().lower()
         if resp in ("s", "sim", "y", "yes"):
             update_yaml(YAML_PATH, A, B)
-            print(f"[SALVO] {YAML_PATH.name} actualizado.")
+            print(f"[SALVO] escala → {YAML_PATH.name}")
         else:
             print("Não guardado — copiar manualmente os valores acima.")
+
+        if marker_meas:
+            resp2 = input("Guardar posições dos markers no YAML? (s/n): ").strip().lower()
+            if resp2 in ("s", "sim", "y", "yes"):
+                updated = update_marker_positions(YAML_PATH, marker_meas)
+                for mid, n, pos in updated:
+                    print(f"[SALVO] marker {mid}  pos={[round(v,3) for v in pos]}"
+                          f"  ({n} ocorrências)")
+            else:
+                print("Posições não guardadas — copiar manualmente os valores acima.")
 
 
 if __name__ == "__main__":
