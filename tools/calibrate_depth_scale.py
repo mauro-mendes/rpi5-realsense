@@ -5,9 +5,9 @@ Usa uma trena laser para obter distâncias de referência precisas e compara
 com as leituras brutas do sensor, ajustando um modelo linear de escala.
 
 Com --update-markers, regista também a posição 3D de cada ArUco medido:
-  y = camera_y + d_laser  (calculado automaticamente)
-  x = medido da parede esquerda
-  z = z_base_marker + 0.095m (centro do marker de 190mm)
+  y = camera_y + d_laser     (calculado automaticamente)
+  x = x_borda_esq + 0.095m  (borda esquerda do marker → centro)
+  z = z_base      + 0.095m  (base do marker → centro)
 
 Procedimento (RPi5 com monitor):
   1. Colocar alvo (papel A4 branco) a distâncias Y conhecidas do corredor.
@@ -307,13 +307,13 @@ def main():
                         print(f"  y calculado: {cam_y:.3f} + {d_laser:.3f} = {y_m:.3f} m")
                         while True:
                             try:
-                                x_m = float(
-                                    input("  x da parede ESQUERDA (m): ")
+                                x_borda = float(
+                                    input("  x da borda ESQUERDA do marker (m): ")
                                     .strip().replace(",", ".")
                                 )
                                 break
                             except ValueError:
-                                print("  → ex: 1.28")
+                                print("  → ex: 1.185")
                         while True:
                             try:
                                 z_base = float(
@@ -323,10 +323,12 @@ def main():
                                 break
                             except ValueError:
                                 print("  → ex: 1.805")
-                        z_m = z_base + MARKER_HALF
+                        x_m = x_borda + MARKER_HALF
+                        z_m = z_base  + MARKER_HALF
                         marker_meas[mid] = [x_m, y_m, z_m]
                         print(f"  → ID {mid}  pos=[{x_m:.3f}, {y_m:.3f}, {z_m:.3f}]"
-                              f"  (z_base={z_base:.3f} + {MARKER_HALF}m)")
+                              f"  (x_borda={x_borda:.3f}+{MARKER_HALF},"
+                              f" z_base={z_base:.3f}+{MARKER_HALF})")
 
                 state[0] = "LIVE"
                 depth_buf.clear()
