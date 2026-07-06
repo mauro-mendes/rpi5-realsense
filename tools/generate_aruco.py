@@ -1,10 +1,10 @@
 """
-Generate printable A4 ArUco markers (DICT_4X4_50) — IDs 20–25.
+Generate printable A4 ArUco markers (DICT_4X4_50) — IDs 20–26.
 
 Output:
   tools/aruco_prints/aruco_XX.png          — A4 300 DPI, individual (para conferir)
-  tools/aruco_prints/all_arucos.pdf        — PDF 6 páginas (UMA por marker) → IMPRIMIR ESTE
-  tools/aruco_prints/all_arucos_preview.png — grade 2×3, visão geral
+  tools/aruco_prints/all_arucos.pdf        — PDF 7 páginas (UMA por marker) → IMPRIMIR ESTE
+  tools/aruco_prints/all_arucos_preview.png — grade 2×4, visão geral
 
 Ao imprimir all_arucos.pdf:
   Tamanho real / 100% / sem ajustar à página.
@@ -32,6 +32,7 @@ MARKER_INFO = {
     23: ("x=2.215, y=3.305", "parede fundo — sobre arm2"),
     24: ("x=2.530, y=5.515", "extensão — fundo esq (arm2)"),
     25: ("x=3.375, y=5.515", "extensão — fundo dir (arm2)"),
+    26: ("x=1.280, y=0.150", "entrada — parede esq da ilha (MEDIR e actualizar YAML!)"),
 }
 
 out_dir = Path(__file__).parent / "aruco_prints"
@@ -87,7 +88,7 @@ for mid in sorted(MARKER_INFO.keys()):
     cell = cv2.resize(canvas, (PREVIEW_SZ, ph), interpolation=cv2.INTER_AREA)
     preview_cells.append(cell)
 
-# ── PDF combinado (6 páginas, 1 marker por página) ────────────────────────────
+# ── PDF combinado (1 marker por página) ──────────────────────────────────────
 pdf_path = out_dir / "all_arucos.pdf"
 all_pages[0].save(
     str(pdf_path), "PDF", resolution=300,
@@ -96,8 +97,8 @@ all_pages[0].save(
 print(f"\n  PDF combinado → {pdf_path.name}  ({len(all_pages)} páginas)")
 print(f"  Imprimir: Tamanho real | 100% | sem 'ajustar à página'")
 
-# ── Preview grid 2 × 3 ───────────────────────────────────────────────────────
-rows, cols = 3, 2
+# ── Preview grid 2 × 4 (7 markers, última célula vazia) ──────────────────────
+rows, cols = 4, 2
 ph = preview_cells[0].shape[0]
 grid = np.ones((rows * ph, cols * PREVIEW_SZ), dtype=np.uint8) * 220
 for idx, cell in enumerate(preview_cells):

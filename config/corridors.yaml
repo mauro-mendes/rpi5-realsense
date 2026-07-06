@@ -277,8 +277,8 @@ corridors:
       - id: 25
         pos: [0.425, 5.515, 2.295]
         facing: S
+        note: "parede do fundo da extensão, lado direito (arm2)"
       - id: 26
         pos: [1.280, 0.150, 1.900]
         facing: S
         note: "entrada — topo parede esquerda da ilha (~2.65m da câmara; MEDIR e actualizar pos)"
-        note: "parede do fundo da extensão, lado direito (arm2)"
