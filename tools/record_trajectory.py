@@ -699,20 +699,24 @@ def main():
                     continue
 
                 key = cv2.waitKey(1) & 0xFF
-                if key == ord("q"):
-                    break
-                elif key == ord("r"):
-                    trajectory.clear()
-                    traj_times.clear()
-                    print("Trajectória limpa — a gravar de novo.")
-                elif key == ord("b"):
-                    show_mask = not show_mask
-                    print(f"Máscara HSV: {'ON' if show_mask else 'OFF'}")
-                elif key == ord("s"):
-                    save_idx += 1
-                    fn = OUT_DIR / f"traj_frame_{save_idx:04d}.png"
-                    cv2.imwrite(str(fn), frame)
-                    print(f"Salvo: {fn.name}")
+                # Em --trials, o controle é 100% pelo TERMINAL (trial_id/START/STOP). As
+                # teclas da janela ficam DESATIVADAS pra não interferir (s/r/b/q eram do
+                # uso interativo) — a janela serve só p/ ver a bola/enquadramento.
+                if not args.trials:
+                    if key == ord("q"):
+                        break
+                    elif key == ord("r"):
+                        trajectory.clear()
+                        traj_times.clear()
+                        print("Trajectória limpa — a gravar de novo.")
+                    elif key == ord("b"):
+                        show_mask = not show_mask
+                        print(f"Máscara HSV: {'ON' if show_mask else 'OFF'}")
+                    elif key == ord("s"):
+                        save_idx += 1
+                        fn = OUT_DIR / f"traj_frame_{save_idx:04d}.png"
+                        cv2.imwrite(str(fn), frame)
+                        print(f"Salvo: {fn.name}")
 
     finally:
         pipeline.stop()
