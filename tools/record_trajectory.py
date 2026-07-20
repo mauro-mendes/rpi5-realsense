@@ -373,6 +373,27 @@ def generate_path_plot(trajectory: list, cam_pos: np.ndarray,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+def _save_trial(trial_id, trajectory, traj_times, traj_wall, cam_pos, args, cfg):
+    """Salva 1 CSV por trial COM a coluna `wall` (epoch) — é ela que sincroniza com o
+    EventLogger do colete (ambos em wall, via NTP). + plot do caminho."""
+    if not trajectory:
+        print(f"[trial] {trial_id}: 0 pontos — nada salvo (bola não foi vista no trial).")
+        return
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    csv_path = OUT_DIR / f"trajectory_{trial_id}_{ts}.csv"
+    with open(csv_path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["n", "t_s", "wall", "x_m", "y_m", "z_m"])
+        for i, (p, t, wl) in enumerate(zip(trajectory, traj_times, traj_wall)):
+            w.writerow([i, f"{t:.3f}", f"{wl:.3f}",
+                        f"{p[0]:.4f}", f"{p[1]:.4f}", f"{p[2]:.4f}"])
+    print(f"[trial] {trial_id}: {len(trajectory)} pontos → {csv_path.name}")
+    try:
+        generate_path_plot(list(trajectory), cam_pos, args.corridor, cfg, OUT_DIR, ts)
+    except Exception as e:
+        print(f"[trial] (plot do caminho falhou, CSV ok: {e})")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--corridor", default="U_esq",
@@ -382,7 +403,17 @@ def main():
                         help="Sem janela — grava frames em output/")
     parser.add_argument("--record", action="store_true",
                         help="Grava vídeo da câmara em output/video_<corredor>_<ts>.avi")
+    parser.add_argument("--trials", action="store_true",
+                        help="MODO ESTUDO: mestre. Operador digita trial_id → START/STOP; manda por ZMQ "
+                             "pro colete (grava sincronizado) e salva a trajetória POR trial (com wall/epoch).")
+    parser.add_argument("--colete", default=None,
+                        help="IP do colete (servidor REP) p/ o --trials, ex.: 192.168.0.11")
+    parser.add_argument("--colete-port", type=int, default=5571,
+                        help="porta REP do colete (default 5571)")
     args = parser.parse_args()
+
+    if args.trials and not args.colete:
+        parser.error("--trials requer --colete <ip do colete>")
 
     OUT_DIR.mkdir(exist_ok=True)
     markers, marker_size, cfg = load_yaml(YAML_PATH)
@@ -445,6 +476,7 @@ def main():
 
     trajectory:  list[np.ndarray] = []
     traj_times:  list[float]      = []   # segundos desde início da gravação
+    traj_wall:   list[float]      = []   # epoch (wall) de cada ponto — p/ sync c/ o colete (NTP)
     t0_record:   float            = 0.0  # timestamp do primeiro ponto
     show_mask  = False
     save_idx   = 0
@@ -464,6 +496,56 @@ def main():
         video_writer = cv2.VideoWriter(str(video_path), fourcc, 30, (640, 480))
         print(f"[REC]  A gravar vídeo → {video_path.name}")
 
+    # ── Modo --trials (MESTRE do estudo): ZMQ REQ pro colete + thread de controle ──────
+    # A thread lê o trial_id no terminal e dispara START/STOP; o loop de captura só grava
+    # a trajetória (carimbando wall/epoch) enquanto o trial está ATIVO, e salva 1 CSV por trial.
+    trial = {"active": False, "id": None, "start_req": None, "stop_req": None, "run": True}
+    if args.trials:
+        import zmq, json as _json, threading
+        _ctx = zmq.Context.instance()
+        _req_sock = _ctx.socket(zmq.REQ)
+        _req_sock.setsockopt(zmq.RCVTIMEO, 2500)
+        _req_sock.setsockopt(zmq.LINGER, 0)
+        _req_sock.connect(f"tcp://{args.colete}:{args.colete_port}")
+        print(f"[trial] REQ → colete tcp://{args.colete}:{args.colete_port}")
+
+        def _req(obj):
+            nonlocal _req_sock
+            try:
+                _req_sock.send(_json.dumps(obj).encode())
+                return _json.loads(_req_sock.recv().decode())
+            except Exception as e:
+                # REQ/REP fica em estado ruim após timeout — recria o socket
+                try: _req_sock.close(0)
+                except Exception: pass
+                _req_sock = _ctx.socket(zmq.REQ)
+                _req_sock.setsockopt(zmq.RCVTIMEO, 2500); _req_sock.setsockopt(zmq.LINGER, 0)
+                _req_sock.connect(f"tcp://{args.colete}:{args.colete_port}")
+                print(f"[trial] SEM ACK do colete ({e}) — re-tente.")
+                return None
+
+        def _control():
+            while trial["run"]:
+                tid = input("\ntrial_id (ex.: P03_colete_1 · Enter vazio = encerrar): ").strip()
+                if not tid:
+                    trial["run"] = False
+                    break
+                wall0 = time.time()
+                ack = _req({"cmd": "START", "trial_id": tid, "wall": wall0})
+                if ack is None:
+                    print("  ⚠ START não confirmado pelo colete — NÃO comece a passada. Re-tente.")
+                    continue
+                off = ack.get("wall", wall0) - wall0
+                print(f"  ✓ colete gravando (offset colete−mestre {off:+.3f}s) — Enter p/ STOP.")
+                trial["start_req"] = tid
+                input()
+                _req({"cmd": "STOP", "trial_id": tid})
+                trial["stop_req"] = tid
+                print(f"  ■ STOP {tid} — salvando trajetória…")
+            print("[trial] encerrando a sessão (aguarde o loop fechar)…")
+
+        threading.Thread(target=_control, daemon=True, name="trial-ctrl").start()
+
     try:
         while True:
             try:
@@ -481,6 +563,20 @@ def main():
             frame = np.asanyarray(color_f.get_data()).copy()
             frame_cnt += 1
             now = time.time()
+
+            # trials: aplica START/STOP pedidos pela thread de controle. A thread principal
+            # é a única que mexe nos buffers → sem corrida.
+            if args.trials:
+                if trial["start_req"] is not None:
+                    trial["id"] = trial["start_req"]; trial["start_req"] = None
+                    trajectory.clear(); traj_times.clear(); traj_wall.clear()
+                    t0_record = 0.0; trial["active"] = True
+                if trial["stop_req"] is not None:
+                    _tid = trial["stop_req"]; trial["stop_req"] = None
+                    trial["active"] = False
+                    _save_trial(_tid, trajectory, traj_times, traj_wall, cam_pos, args, cfg)
+                if not trial["run"] and not trial["active"]:
+                    break
 
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
@@ -550,12 +646,13 @@ def main():
                         cv2.putText(frame, lbl, (bx + brad + 5, by),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                                     (0, 255, 0), 2)
-                        # grava com limite de taxa
-                        if now - last_record >= RECORD_DT:
+                        # grava com limite de taxa. Em --trials, só grava com trial ATIVO.
+                        if now - last_record >= RECORD_DT and (not args.trials or trial["active"]):
                             if not trajectory:
                                 t0_record = now
                             trajectory.append(ball_world.copy())
                             traj_times.append(now - t0_record)
+                            traj_wall.append(now)          # epoch p/ sync com o colete (NTP)
                             last_record = now
 
                     if show_mask:
@@ -626,7 +723,9 @@ def main():
         print(f"\n{'─'*50}")
 
         # ── CSV ────────────────────────────────────────────────────────────
-        if trajectory:
+        if args.trials:
+            print("[trial] sessão encerrada — trajetórias salvas por trial (uma por trial_id).")
+        elif trajectory:
             ts  = datetime.now().strftime("%Y%m%d_%H%M%S")
             csv_path = OUT_DIR / f"trajectory_{args.corridor}_{ts}.csv"
             with open(csv_path, "w", newline="") as f:
