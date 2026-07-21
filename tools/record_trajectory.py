@@ -407,13 +407,21 @@ def main():
                         help="MODO ESTUDO: mestre. Operador digita trial_id → START/STOP; manda por ZMQ "
                              "pro colete (grava sincronizado) e salva a trajetória POR trial (com wall/epoch).")
     parser.add_argument("--colete", default=None,
-                        help="IP do colete (servidor REP) p/ o --trials, ex.: 192.168.0.11")
+                        help="IP do COLETE (servidor REP) p/ o --trials, ex.: 192.168.1.119")
+    parser.add_argument("--bengala", default=None,
+                        help="IP da BENGALA (servidor REP) p/ o --trials, ex.: 192.168.1.120")
     parser.add_argument("--colete-port", type=int, default=5571,
-                        help="porta REP do colete (default 5571)")
+                        help="porta REP do escravo colete/bengala (default 5571)")
     args = parser.parse_args()
 
-    if args.trials and not args.colete:
-        parser.error("--trials requer --colete <ip do colete>")
+    if args.trials and not (args.colete or args.bengala):
+        parser.error("--trials requer --colete <ip> OU --bengala <ip>")
+    if args.colete and args.bengala:
+        parser.error("use apenas UM: --colete OU --bengala (um escravo por sessão)")
+
+    # Escravo do estudo: colete ou bengala (mesmo protocolo REP na porta 5571)
+    slave_ip   = args.colete or args.bengala
+    slave_name = "colete" if args.colete else "bengala"
 
     OUT_DIR.mkdir(exist_ok=True)
     markers, marker_size, cfg = load_yaml(YAML_PATH)
@@ -506,8 +514,8 @@ def main():
         _req_sock = _ctx.socket(zmq.REQ)
         _req_sock.setsockopt(zmq.RCVTIMEO, 2500)
         _req_sock.setsockopt(zmq.LINGER, 0)
-        _req_sock.connect(f"tcp://{args.colete}:{args.colete_port}")
-        print(f"[trial] REQ → colete tcp://{args.colete}:{args.colete_port}")
+        _req_sock.connect(f"tcp://{slave_ip}:{args.colete_port}")
+        print(f"[trial] REQ → {slave_name} tcp://{slave_ip}:{args.colete_port}")
 
         def _req(obj):
             nonlocal _req_sock
@@ -520,8 +528,8 @@ def main():
                 except Exception: pass
                 _req_sock = _ctx.socket(zmq.REQ)
                 _req_sock.setsockopt(zmq.RCVTIMEO, 2500); _req_sock.setsockopt(zmq.LINGER, 0)
-                _req_sock.connect(f"tcp://{args.colete}:{args.colete_port}")
-                print(f"[trial] SEM ACK do colete ({e}) — re-tente.")
+                _req_sock.connect(f"tcp://{slave_ip}:{args.colete_port}")
+                print(f"[trial] SEM ACK do {slave_name} ({e}) — re-tente.")
                 return None
 
         def _control():
@@ -533,10 +541,10 @@ def main():
                 wall0 = time.time()
                 ack = _req({"cmd": "START", "trial_id": tid, "wall": wall0})
                 if ack is None:
-                    print("  ⚠ START não confirmado pelo colete — NÃO comece a passada. Re-tente.")
+                    print(f"  ⚠ START não confirmado pelo {slave_name} — NÃO comece a passada. Re-tente.")
                     continue
                 off = ack.get("wall", wall0) - wall0
-                print(f"  ✓ colete gravando (offset colete−mestre {off:+.3f}s) — Enter p/ STOP.")
+                print(f"  ✓ {slave_name} gravando (offset {slave_name}−mestre {off:+.3f}s) — Enter p/ STOP.")
                 trial["start_req"] = tid
                 input()
                 _req({"cmd": "STOP", "trial_id": tid})
