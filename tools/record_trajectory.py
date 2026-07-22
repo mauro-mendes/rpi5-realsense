@@ -682,8 +682,9 @@ def main():
                             (6, 58), cv2.FONT_HERSHEY_SIMPLEX, 0.50,
                             ball_clr, 1)
 
-                # log terminal
-                if now - last_log >= 3.0:
+                # log terminal — em --trials, só loga com trial ATIVO (START→STOP);
+                # senão os logs da bola soterram o prompt do trial_id no terminal
+                if now - last_log >= 3.0 and (not args.trials or trial["active"]):
                     bs = (f"bola=({ball_world[0]:+.2f},{ball_world[1]:+.2f})"
                           if ball_world is not None else "bola=N/A")
                     print(f"[f={frame_cnt:05d}] pts={len(trajectory):4d}  {bs}")
