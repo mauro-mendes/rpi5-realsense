@@ -402,7 +402,8 @@ def main():
     parser.add_argument("--headless", action="store_true",
                         help="Sem janela — grava frames em output/")
     parser.add_argument("--record", action="store_true",
-                        help="Grava vídeo da câmara em output/video_<corredor>_<ts>.avi")
+                        help="Grava vídeo H.264/mp4 (WhatsApp-ready). Sem --trials: output/video_<corredor>_<ts>.mp4 "
+                             "contínuo. Com --trials: um output/video_<trial_id>.mp4 por trial (START→STOP).")
     parser.add_argument("--trials", action="store_true",
                         help="MODO ESTUDO: mestre. Operador digita trial_id → START/STOP; manda por ZMQ "
                              "pro colete (grava sincronizado) e salva a trajetória POR trial (com wall/epoch).")
@@ -494,15 +495,19 @@ def main():
     last_save   = 0.0
     RECORD_DT   = 1.0 / RECORD_HZ
 
-    # ── Vídeo opcional ────────────────────────────────────────────────────────
-    video_writer: "cv2.VideoWriter | None" = None
-    video_path:   "Path | None"            = None
+    # ── Vídeo opcional (H.264/mp4 pronto p/ WhatsApp — igual ao colete) ─────────
+    # Sem --trials: um mp4 contínuo da sessão. Com --trials: um mp4 POR trial,
+    # criado no START e fechado no STOP (ver bloco de controle no loop).
+    video_writer = None
+    video_path   = None
     if args.record:
-        _vts      = datetime.now().strftime("%Y%m%d_%H%M%S")
-        video_path = OUT_DIR / f"video_{args.corridor}_{_vts}.avi"
-        fourcc     = cv2.VideoWriter_fourcc(*"MJPG")
-        video_writer = cv2.VideoWriter(str(video_path), fourcc, 30, (640, 480))
-        print(f"[REC]  A gravar vídeo → {video_path.name}")
+        from _ffwriter import FFmpegWriter   # tools/ está no sys.path (script roda de tools/)
+        if not args.trials:
+            _vts       = datetime.now().strftime("%Y%m%d_%H%M%S")
+            video_path = OUT_DIR / f"video_{args.corridor}_{_vts}.mp4"
+            video_writer = FFmpegWriter(str(video_path), 640, 480, 30,
+                                        crf=20, preset="veryfast")
+            print(f"[REC]  A gravar vídeo → {video_path.name}")
 
     # ── Modo --trials (MESTRE do estudo): ZMQ REQ pro colete + thread de controle ──────
     # A thread lê o trial_id no terminal e dispara START/STOP; o loop de captura só grava
@@ -579,10 +584,20 @@ def main():
                     trial["id"] = trial["start_req"]; trial["start_req"] = None
                     trajectory.clear(); traj_times.clear(); traj_wall.clear()
                     t0_record = 0.0; trial["active"] = True
+                    if args.record:                 # abre mp4 H.264 deste trial
+                        if video_writer is not None:   # START sem STOP anterior — fecha o aberto
+                            video_writer.release()
+                        video_path = OUT_DIR / f"video_{trial['id']}.mp4"
+                        video_writer = FFmpegWriter(str(video_path), 640, 480, 30,
+                                                    crf=20, preset="veryfast")
+                        print(f"[REC]  {trial['id']} → {video_path.name}")
                 if trial["stop_req"] is not None:
                     _tid = trial["stop_req"]; trial["stop_req"] = None
                     trial["active"] = False
                     _save_trial(_tid, trajectory, traj_times, traj_wall, cam_pos, args, cfg)
+                    if video_writer is not None:    # fecha o mp4 do trial
+                        video_writer.release(); video_writer = None
+                        print(f"[REC]  {_tid} → vídeo salvo ({video_path.name})")
                 if not trial["run"] and not trial["active"]:
                     break
 
