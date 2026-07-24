@@ -164,6 +164,20 @@ corridors:
     start: [0.6, 0.3]    # • centro arm1, 0.3m da entrada
     goal:  [0.6, 5.2]    # fim da extensão, 0.3m da parede do fundo
 
+    # Obstáculos do teste de DETECÇÃO (só no reto). Medir (x,y) do CENTRO como as paredes:
+    #   x_design = 3.5 - x_medido(da parede DIREITA);  y = distância da entrada.
+    # height_m ajuda a separar aéreo (cabeça) de chão. type: aerial | floor.
+    # A distância-verdade pessoa→obstáculo sai daqui + a trajetória GT (bola).  <<< MEDIR >>>
+    obstacles:
+      - id: pare
+        pos: [0.0, 0.0]     # <<< MEDIR >>> placa PARE em espuma (altura da cabeça)
+        height_m: 1.6
+        type: aerial
+      - id: cadeira
+        pos: [0.0, 0.0]     # <<< MEDIR >>> cadeira (nível do chão/pernas)
+        height_m: 0.9
+        type: floor
+
     # Mesmos marcadores físicos do U_esq + 2 novos no fundo da extensão
     markers:
       - id: 20
