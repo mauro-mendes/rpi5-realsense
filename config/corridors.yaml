@@ -170,9 +170,12 @@ corridors:
     # A distância-verdade pessoa→obstáculo sai daqui + a trajetória GT (bola).  <<< MEDIR >>>
     obstacles:
       - id: pare
-        pos: [0.0, 0.0]     # <<< MEDIR >>> placa PARE em espuma (altura da cabeça)
-        height_m: 1.6
+        pos: [0.0, 0.0]     # <<< MEDIR >>> ponto NA PAREDE onde monta (x da parede, y ao longo do reto)
+        height_m: 1.5       # centro na altura da cabeça (acima da cintura → bengala não pega)
         type: aerial
+        mount: wall         # presa na parede, SEM base no chão (bengala não detecta)
+        protrusion_m: 0.30  # <<< MEDIR >>> quanto avança do plano da parede p/ dentro do corredor
+        faces: toward_walker # face da placa apontando p/ quem se aproxima (senão o YOLO não vê)
       - id: cadeira
         pos: [0.0, 0.0]     # <<< MEDIR >>> cadeira (nível do chão/pernas)
         height_m: 0.9
