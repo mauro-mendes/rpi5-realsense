@@ -471,14 +471,13 @@ def main():
                              "(ex.: 'P03_reto_2 dir'). Só afeta o reto; placa PARE é fixa.")
     args = parser.parse_args()
 
-    if args.trials and not (args.colete or args.bengala):
-        parser.error("--trials requer --colete <ip> OU --bengala <ip>")
     if args.colete and args.bengala:
         parser.error("use apenas UM: --colete OU --bengala (um escravo por sessão)")
 
-    # Escravo do estudo: colete ou bengala (mesmo protocolo REP na porta 5571)
+    # Escravo do estudo: colete OU bengala. NENHUM = modo GT-only (C1 bengala branca: sem
+    # dispositivo na rede → grava a trajetória por passada, sem ZMQ).
     slave_ip   = args.colete or args.bengala
-    slave_name = "colete" if args.colete else "bengala"
+    slave_name = ("colete" if args.colete else "bengala") if slave_ip else "GT-only (C1)"
 
     OUT_DIR.mkdir(exist_ok=True)
     markers, marker_size, cfg = load_yaml(YAML_PATH)
@@ -571,27 +570,34 @@ def main():
     trial = {"active": False, "id": None, "start_req": None, "stop_req": None, "run": True,
              "cadeira_req": None, "cadeira": args.cadeira}
     if args.trials:
-        import zmq, json as _json, threading
-        _ctx = zmq.Context.instance()
-        _req_sock = _ctx.socket(zmq.REQ)
-        _req_sock.setsockopt(zmq.RCVTIMEO, 2500)
-        _req_sock.setsockopt(zmq.LINGER, 0)
-        _req_sock.connect(f"tcp://{slave_ip}:{args.colete_port}")
-        print(f"[trial] REQ → {slave_name} tcp://{slave_ip}:{args.colete_port}")
+        import threading
+        if slave_ip:
+            import zmq, json as _json
+            _ctx = zmq.Context.instance()
+            _req_sock = _ctx.socket(zmq.REQ)
+            _req_sock.setsockopt(zmq.RCVTIMEO, 2500)
+            _req_sock.setsockopt(zmq.LINGER, 0)
+            _req_sock.connect(f"tcp://{slave_ip}:{args.colete_port}")
+            print(f"[trial] REQ → {slave_name} tcp://{slave_ip}:{args.colete_port}")
 
-        def _req(obj):
-            nonlocal _req_sock
-            try:
-                _req_sock.send(_json.dumps(obj).encode())
-                return _json.loads(_req_sock.recv().decode())
-            except Exception as e:
-                # REQ/REP fica em estado ruim após timeout — recria o socket
-                try: _req_sock.close(0)
-                except Exception: pass
-                _req_sock = _ctx.socket(zmq.REQ)
-                _req_sock.setsockopt(zmq.RCVTIMEO, 2500); _req_sock.setsockopt(zmq.LINGER, 0)
-                _req_sock.connect(f"tcp://{slave_ip}:{args.colete_port}")
-                print(f"[trial] SEM ACK do {slave_name} ({e}) — re-tente.")
+            def _req(obj):
+                nonlocal _req_sock
+                try:
+                    _req_sock.send(_json.dumps(obj).encode())
+                    return _json.loads(_req_sock.recv().decode())
+                except Exception as e:
+                    # REQ/REP fica em estado ruim após timeout — recria o socket
+                    try: _req_sock.close(0)
+                    except Exception: pass
+                    _req_sock = _ctx.socket(zmq.REQ)
+                    _req_sock.setsockopt(zmq.RCVTIMEO, 2500); _req_sock.setsockopt(zmq.LINGER, 0)
+                    _req_sock.connect(f"tcp://{slave_ip}:{args.colete_port}")
+                    print(f"[trial] SEM ACK do {slave_name} ({e}) — re-tente.")
+                    return None
+        else:
+            print("[trial] modo GT-only (C1 bengala branca): SEM dispositivo/ZMQ — grava só a "
+                  "trajetória por passada (trial_id/START/STOP no terminal).")
+            def _req(obj):          # sem escravo → no-op
                 return None
 
         def _control():
@@ -605,18 +611,22 @@ def main():
                 parts = raw.rsplit(None, 1); layout = None; tid = raw
                 if len(parts) == 2 and parts[1].lower() in _lay:
                     tid, layout = parts[0].strip(), _lay[parts[1].lower()]
-                wall0 = time.time()
-                ack = _req({"cmd": "START", "trial_id": tid, "wall": wall0})
-                if ack is None:
-                    print(f"  ⚠ START não confirmado pelo {slave_name} — NÃO comece a passada. Re-tente.")
-                    continue
-                off = ack.get("wall", wall0) - wall0
                 _cad = layout or args.cadeira
-                print(f"  ✓ {slave_name} gravando (offset {slave_name}−mestre {off:+.3f}s · cadeira={_cad}) — Enter p/ STOP.")
+                if slave_ip:
+                    wall0 = time.time()
+                    ack = _req({"cmd": "START", "trial_id": tid, "wall": wall0})
+                    if ack is None:
+                        print(f"  ⚠ START não confirmado pelo {slave_name} — NÃO comece a passada. Re-tente.")
+                        continue
+                    off = ack.get("wall", wall0) - wall0
+                    print(f"  ✓ {slave_name} gravando (offset {slave_name}−mestre {off:+.3f}s · cadeira={_cad}) — Enter p/ STOP.")
+                else:
+                    print(f"  ✓ GT gravando (C1 · cadeira={_cad}) — Enter p/ STOP.")
                 trial["cadeira_req"] = _cad
                 trial["start_req"] = tid
                 input()
-                _req({"cmd": "STOP", "trial_id": tid})
+                if slave_ip:
+                    _req({"cmd": "STOP", "trial_id": tid})
                 trial["stop_req"] = tid
                 print(f"  ■ STOP {tid} — salvando trajetória…")
             print("[trial] encerrando a sessão (aguarde o loop fechar)…")
