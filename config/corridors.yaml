@@ -175,11 +175,12 @@ corridors:
         size_m: 0.5         # diâmetro do octógono (extensão p/ colisão)
         type: aerial        # obstáculo AÉREO — só a mochila/colete detecta
       - id: cadeira
-        pos: [0.0, 4.0]     # base da cadeira, junto à parede esquerda — medido 24/07
+        y: 4.0                            # sempre em y=4 (medido 24/07)
+        x: {esquerda: 0.0, direita: 0.8}  # Layout A=ESQ (x=0) · B=DIR (x=0.8) — --cadeira seleciona
         height_m: 0.9       # altura física da cadeira (base em z=0, no chão)
         size_m: 0.5         # footprint aprox. (extensão p/ colisão)
         type: floor         # obstáculo de CHÃO
-        movable: true       # reposicionada entre trials → registrar pos POR TRIAL (ver record_obstacle)
+        movable: true       # muda de lado entre passadas (--cadeira ou sufixo esq/dir no trial_id)
 
     # Mesmos marcadores físicos do U_esq + 2 novos no fundo da extensão
     markers:

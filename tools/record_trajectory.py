@@ -162,8 +162,42 @@ def ball_world_pos(px, py, depth_f, cam_pos, intr,
 
 
 # ── Plot final ────────────────────────────────────────────────────────────────
+def _resolve_obstacles(corridor: dict, cadeira: str) -> list:
+    """Obstáculos do corredor com `pos` resolvida. Cadeira móvel: x pelo layout (--cadeira).
+    Devolve [] se o corredor não tem `obstacles` (S/U não têm → nada é desenhado)."""
+    out = []
+    for ob in corridor.get("obstacles", []):
+        o = dict(ob)
+        if "pos" in ob:                       # obstáculo fixo (ex.: placa PARE)
+            o["pos"] = [float(ob["pos"][0]), float(ob["pos"][1])]
+        elif "x" in ob and "y" in ob:         # móvel (cadeira): x pelo layout
+            xd = ob["x"]
+            xx = xd.get(cadeira, next(iter(xd.values()))) if isinstance(xd, dict) else xd
+            o["pos"] = [float(xx), float(ob["y"])]
+        else:
+            continue
+        out.append(o)
+    return out
+
+
+def _draw_obstacles(ax, corridor: dict, cadeira: str) -> None:
+    """Desenha os obstáculos no plot. Só o RETO tem `obstacles` no yaml → S/U não desenham."""
+    for ob in _resolve_obstacles(corridor, cadeira):
+        ox, oy = ob["pos"]; sz = float(ob.get("size_m", 0.4))
+        if ob.get("type") == "aerial":        # placa PARE (aérea) — octógono vermelho
+            ax.plot(ox, oy, marker="8", color="crimson", markersize=13, zorder=6,
+                    markeredgecolor="k", label="placa PARE (aérea)")
+            ax.text(ox + 0.10, oy, "PARE", fontsize=7, color="crimson", va="center")
+        else:                                 # cadeira (chão) — footprint laranja
+            ax.add_patch(plt.Rectangle((ox - sz / 2, oy - sz / 2), sz, sz,
+                         color="darkorange", alpha=0.55, zorder=5,
+                         label=f"cadeira ({cadeira})"))
+            ax.text(ox + sz / 2 + 0.05, oy, ob.get("id", "obs"), fontsize=7,
+                    color="darkorange", va="center")
+
+
 def generate_plot(trajectory: list, traj_times: list, cam_pos: np.ndarray,
-                  corridor_key: str, cfg: dict, out_dir: Path) -> Path:
+                  corridor_key: str, cfg: dict, out_dir: Path, cadeira: str = "esquerda") -> Path:
     corridor = cfg["corridors"].get(corridor_key, {})
     sg       = cfg.get("shared_geometry", {})
 
@@ -198,6 +232,9 @@ def generate_plot(trajectory: list, traj_times: list, cam_pos: np.ndarray,
     ax.plot(cam_pos[0], cam_pos[1], "D", color="darkorange",
             markersize=11, zorder=4,
             label=f"Câmara ({cam_pos[0]:.2f}, {cam_pos[1]:.2f})")
+
+    # Obstáculos (só o reto tem `obstacles` no yaml)
+    _draw_obstacles(ax, corridor, cadeira)
 
     # Trajectória — clip ao corredor (y ∈ [0, total_d])
     if trajectory:
@@ -307,7 +344,7 @@ def _resample_path(trajectory: list, n_pts: int = 200,
 
 def generate_path_plot(trajectory: list, cam_pos: np.ndarray,
                        corridor_key: str, cfg: dict,
-                       out_dir: Path, ts: str) -> Path:
+                       out_dir: Path, ts: str, cadeira: str = "esquerda") -> Path:
     """Plot com caminho reamostrado por distância (pontos equidistantes em arco)."""
     corridor = cfg["corridors"].get(corridor_key, {})
     sg       = cfg.get("shared_geometry", {})
@@ -343,6 +380,9 @@ def generate_path_plot(trajectory: list, cam_pos: np.ndarray,
             markersize=11, zorder=4,
             label=f"Câmara ({cam_pos[0]:.2f}, {cam_pos[1]:.2f})")
 
+    # Obstáculos (só o reto tem `obstacles` no yaml → S/U não desenham nada)
+    _draw_obstacles(ax, corridor, cadeira)
+
     # Caminho reamostrado — clip ao corredor (y ∈ [0, total_d])
     res = _resample_path(trajectory, y_max=total_d) if trajectory else None
     if res is not None:
@@ -373,9 +413,10 @@ def generate_path_plot(trajectory: list, cam_pos: np.ndarray,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-def _save_trial(trial_id, trajectory, traj_times, traj_wall, cam_pos, args, cfg):
+def _save_trial(trial_id, trajectory, traj_times, traj_wall, cam_pos, args, cfg,
+                cadeira="esquerda"):
     """Salva 1 CSV por trial COM a coluna `wall` (epoch) — é ela que sincroniza com o
-    EventLogger do colete (ambos em wall, via NTP). + plot do caminho."""
+    EventLogger do colete (ambos em wall, via NTP). + plot do caminho + sidecar dos obstáculos."""
     if not trajectory:
         print(f"[trial] {trial_id}: 0 pontos — nada salvo (bola não foi vista no trial).")
         return
@@ -387,9 +428,20 @@ def _save_trial(trial_id, trajectory, traj_times, traj_wall, cam_pos, args, cfg)
         for i, (p, t, wl) in enumerate(zip(trajectory, traj_times, traj_wall)):
             w.writerow([i, f"{t:.3f}", f"{wl:.3f}",
                         f"{p[0]:.4f}", f"{p[1]:.4f}", f"{p[2]:.4f}"])
-    print(f"[trial] {trial_id}: {len(trajectory)} pontos → {csv_path.name}")
+    print(f"[trial] {trial_id}: {len(trajectory)} pontos → {csv_path.name}  (cadeira: {cadeira})")
+    # sidecar dos obstáculos USADOS neste trial (posição da cadeira depende do layout) — a análise
+    # de colisão lê daqui a posição exata da cadeira/placa por passada.
+    obs = _resolve_obstacles(cfg["corridors"].get(args.corridor, {}), cadeira)
+    if obs:
+        try:
+            import json
+            with open(OUT_DIR / f"obstacles_{trial_id}_{ts}.json", "w", encoding="utf-8") as jf:
+                json.dump({"corridor": args.corridor, "cadeira": cadeira, "obstacles": obs},
+                          jf, ensure_ascii=False)
+        except Exception as e:
+            print(f"[trial] (sidecar de obstáculos falhou: {e})")
     try:
-        generate_path_plot(list(trajectory), cam_pos, args.corridor, cfg, OUT_DIR, ts)
+        generate_path_plot(list(trajectory), cam_pos, args.corridor, cfg, OUT_DIR, ts, cadeira)
     except Exception as e:
         print(f"[trial] (plot do caminho falhou, CSV ok: {e})")
 
@@ -413,6 +465,10 @@ def main():
                         help="IP da BENGALA (servidor REP) p/ o --trials, ex.: 192.168.1.120")
     parser.add_argument("--colete-port", type=int, default=5571,
                         help="porta REP do escravo colete/bengala (default 5571)")
+    parser.add_argument("--cadeira", choices=["esquerda", "direita"], default="esquerda",
+                        help="Layout PADRÃO da cadeira no RETO (A=esquerda x=0 · B=direita x=0.8). "
+                             "Dá p/ sobrescrever por passada: digite 'esq' ou 'dir' após o trial_id "
+                             "(ex.: 'P03_reto_2 dir'). Só afeta o reto; placa PARE é fixa.")
     args = parser.parse_args()
 
     if args.trials and not (args.colete or args.bengala):
@@ -512,7 +568,8 @@ def main():
     # ── Modo --trials (MESTRE do estudo): ZMQ REQ pro colete + thread de controle ──────
     # A thread lê o trial_id no terminal e dispara START/STOP; o loop de captura só grava
     # a trajetória (carimbando wall/epoch) enquanto o trial está ATIVO, e salva 1 CSV por trial.
-    trial = {"active": False, "id": None, "start_req": None, "stop_req": None, "run": True}
+    trial = {"active": False, "id": None, "start_req": None, "stop_req": None, "run": True,
+             "cadeira_req": None, "cadeira": args.cadeira}
     if args.trials:
         import zmq, json as _json, threading
         _ctx = zmq.Context.instance()
@@ -538,18 +595,25 @@ def main():
                 return None
 
         def _control():
+            _lay = {"esq": "esquerda", "esquerda": "esquerda", "dir": "direita", "direita": "direita"}
             while trial["run"]:
-                tid = input("\ntrial_id (ex.: P03_colete_1 · Enter vazio = encerrar): ").strip()
-                if not tid:
+                raw = input("\ntrial_id (ex.: P03_reto_1 [esq|dir] · Enter vazio = encerrar): ").strip()
+                if not raw:
                     trial["run"] = False
                     break
+                # sufixo opcional de layout da cadeira (só reto): 'P03_reto_2 dir'
+                parts = raw.rsplit(None, 1); layout = None; tid = raw
+                if len(parts) == 2 and parts[1].lower() in _lay:
+                    tid, layout = parts[0].strip(), _lay[parts[1].lower()]
                 wall0 = time.time()
                 ack = _req({"cmd": "START", "trial_id": tid, "wall": wall0})
                 if ack is None:
                     print(f"  ⚠ START não confirmado pelo {slave_name} — NÃO comece a passada. Re-tente.")
                     continue
                 off = ack.get("wall", wall0) - wall0
-                print(f"  ✓ {slave_name} gravando (offset {slave_name}−mestre {off:+.3f}s) — Enter p/ STOP.")
+                _cad = layout or args.cadeira
+                print(f"  ✓ {slave_name} gravando (offset {slave_name}−mestre {off:+.3f}s · cadeira={_cad}) — Enter p/ STOP.")
+                trial["cadeira_req"] = _cad
                 trial["start_req"] = tid
                 input()
                 _req({"cmd": "STOP", "trial_id": tid})
@@ -582,6 +646,7 @@ def main():
             if args.trials:
                 if trial["start_req"] is not None:
                     trial["id"] = trial["start_req"]; trial["start_req"] = None
+                    trial["cadeira"] = trial.get("cadeira_req") or args.cadeira
                     trajectory.clear(); traj_times.clear(); traj_wall.clear()
                     t0_record = 0.0; trial["active"] = True
                     if args.record:                 # abre mp4 H.264 deste trial
@@ -594,7 +659,8 @@ def main():
                 if trial["stop_req"] is not None:
                     _tid = trial["stop_req"]; trial["stop_req"] = None
                     trial["active"] = False
-                    _save_trial(_tid, trajectory, traj_times, traj_wall, cam_pos, args, cfg)
+                    _save_trial(_tid, trajectory, traj_times, traj_wall, cam_pos, args, cfg,
+                                trial.get("cadeira", args.cadeira))
                     if video_writer is not None:    # fecha o mp4 do trial
                         video_writer.release(); video_writer = None
                         print(f"[REC]  {_tid} → vídeo salvo ({video_path.name})")
@@ -767,9 +833,9 @@ def main():
             # ── Plot PNG ───────────────────────────────────────────────────
             ts_str    = datetime.now().strftime("%Y%m%d_%H%M%S")
             plot_path = generate_plot(
-                trajectory, traj_times, cam_pos, args.corridor, cfg, OUT_DIR)
+                trajectory, traj_times, cam_pos, args.corridor, cfg, OUT_DIR, args.cadeira)
             path_path = generate_path_plot(
-                trajectory, cam_pos, args.corridor, cfg, OUT_DIR, ts_str)
+                trajectory, cam_pos, args.corridor, cfg, OUT_DIR, ts_str, args.cadeira)
             print(f"[PLOT] scatter → {plot_path.name}")
             print(f"[PLOT] caminho → {path_path.name}")
             print(f"       Transferir para PC: git pull após push do RPi5")
