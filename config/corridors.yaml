@@ -170,7 +170,7 @@ corridors:
     # A distância-verdade pessoa→obstáculo sai daqui + a trajetória GT (bola).  <<< MEDIR >>>
     obstacles:
       - id: pare
-        pos: [0.6, 2.2]     # centro da placa (eixo do caminho, arm1) — medido 24/07
+        pos: [0.55, 1.8]    # centro da placa (eixo do caminho, arm1) — medido 24/07
         height_m: 1.4       # z do centro (altura da cabeça → bengala não pega)
         size_m: 0.5         # diâmetro do octógono (extensão p/ colisão)
         type: aerial        # obstáculo AÉREO — só a mochila/colete detecta

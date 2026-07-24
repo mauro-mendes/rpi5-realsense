@@ -189,10 +189,13 @@ def _draw_obstacles(ax, corridor: dict, cadeira: str) -> None:
                     markeredgecolor="k", label="placa PARE (aérea)")
             ax.text(ox + 0.10, oy, "PARE", fontsize=7, color="crimson", va="center")
         else:                                 # cadeira (chão) — footprint laranja
-            ax.add_patch(plt.Rectangle((ox - sz / 2, oy - sz / 2), sz, sz,
+            # cadeira encosta na parede: se o quadrado (centrado em ox) passaria de x=0
+            # (parede externa esq), empurra o footprint INTEIRO p/ dentro do corredor.
+            x0 = max(0.0, ox - sz / 2)
+            ax.add_patch(plt.Rectangle((x0, oy - sz / 2), sz, sz,
                          color="darkorange", alpha=0.55, zorder=5,
                          label=f"cadeira ({cadeira})"))
-            ax.text(ox + sz / 2 + 0.05, oy, ob.get("id", "obs"), fontsize=7,
+            ax.text(x0 + sz + 0.05, oy, ob.get("id", "obs"), fontsize=7,
                     color="darkorange", va="center")
 
 
