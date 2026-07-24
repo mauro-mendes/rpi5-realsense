@@ -184,10 +184,11 @@ def _draw_obstacles(ax, corridor: dict, cadeira: str) -> None:
     """Desenha os obstáculos no plot. Só o RETO tem `obstacles` no yaml → S/U não desenham."""
     for ob in _resolve_obstacles(corridor, cadeira):
         ox, oy = ob["pos"]; sz = float(ob.get("size_m", 0.4))
-        if ob.get("type") == "aerial":        # placa PARE (aérea) — octógono vermelho
-            ax.plot(ox, oy, marker="8", color="crimson", markersize=13, zorder=6,
-                    markeredgecolor="k", label="placa PARE (aérea)")
-            ax.text(ox + 0.10, oy, "PARE", fontsize=7, color="crimson", va="center")
+        if ob.get("type") == "aerial":        # placa PARE (aérea) — LINHA vermelha na largura (x)
+            xl = max(0.0, ox - sz / 2); xr = ox + sz / 2
+            ax.plot([xl, xr], [oy, oy], color="crimson", linewidth=5,
+                    solid_capstyle="butt", zorder=6, label="placa PARE (aérea)")
+            ax.text(xr + 0.05, oy, "PARE", fontsize=7, color="crimson", va="center")
         else:                                 # cadeira (chão) — footprint laranja
             # cadeira encosta na parede: se o quadrado (centrado em ox) passaria de x=0
             # (parede externa esq), empurra o footprint INTEIRO p/ dentro do corredor.
