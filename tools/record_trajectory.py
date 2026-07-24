@@ -181,22 +181,22 @@ def _resolve_obstacles(corridor: dict, cadeira: str) -> list:
 
 
 def _draw_obstacles(ax, corridor: dict, cadeira: str) -> None:
-    """Desenha os obstáculos no plot. Só o RETO tem `obstacles` no yaml → S/U não desenham."""
+    """Desenha os obstáculos no plot. Só o RETO tem `obstacles` no yaml → S/U não desenham.
+    CONVENÇÃO: pos.x = distância da parede ESQUERDA (x=0) até a BORDA ESQUERDA do obstáculo;
+    ele ocupa x ∈ [x, x+size_m] (clampado à largura útil do corredor)."""
+    cw = float(corridor.get("corridor_width_m", 1.2))   # largura útil do reto (x∈[0, cw])
     for ob in _resolve_obstacles(corridor, cadeira):
         ox, oy = ob["pos"]; sz = float(ob.get("size_m", 0.4))
+        xl = max(0.0, ox); xr = min(cw, ox + sz)         # borda esq a `ox` da parede; largura sz
         if ob.get("type") == "aerial":        # placa PARE (aérea) — LINHA vermelha na largura (x)
-            xl = max(0.0, ox - sz / 2); xr = ox + sz / 2
             ax.plot([xl, xr], [oy, oy], color="crimson", linewidth=5,
                     solid_capstyle="butt", zorder=6, label="placa PARE (aérea)")
             ax.text(xr + 0.05, oy, "PARE", fontsize=7, color="crimson", va="center")
         else:                                 # cadeira (chão) — footprint laranja
-            # cadeira encosta na parede: se o quadrado (centrado em ox) passaria de x=0
-            # (parede externa esq), empurra o footprint INTEIRO p/ dentro do corredor.
-            x0 = max(0.0, ox - sz / 2)
-            ax.add_patch(plt.Rectangle((x0, oy - sz / 2), sz, sz,
+            ax.add_patch(plt.Rectangle((xl, oy - sz / 2), xr - xl, sz,
                          color="darkorange", alpha=0.55, zorder=5,
                          label=f"cadeira ({cadeira})"))
-            ax.text(x0 + sz + 0.05, oy, ob.get("id", "obs"), fontsize=7,
+            ax.text(xr + 0.05, oy, ob.get("id", "obs"), fontsize=7,
                     color="darkorange", va="center")
 
 

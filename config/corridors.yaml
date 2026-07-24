@@ -164,22 +164,22 @@ corridors:
     start: [0.6, 0.3]    # • centro arm1, 0.3m da entrada
     goal:  [0.6, 5.2]    # fim da extensão, 0.3m da parede do fundo
 
-    # Obstáculos do teste de DETECÇÃO (só no reto). Medir (x,y) do CENTRO como as paredes:
-    #   x_design = 3.5 - x_medido(da parede DIREITA);  y = distância da entrada.
-    # height_m ajuda a separar aéreo (cabeça) de chão. type: aerial | floor.
-    # A distância-verdade pessoa→obstáculo sai daqui + a trajetória GT (bola).  <<< MEDIR >>>
+    # Obstáculos do teste de DETECÇÃO (só no reto). CONVENÇÃO (≠ dos marcadores/paredes):
+    #   pos.x = distância da parede ESQUERDA (x=0) até a BORDA ESQUERDA do obstáculo.
+    #   O obstáculo OCUPA x ∈ [x, x+size_m].  y = distância da entrada.  size_m = largura.
+    #   type: aerial (altura da cabeça, só mochila/colete pega) | floor (chão). — medido 24/07
     obstacles:
       - id: pare
-        pos: [0.55, 1.8]    # centro da placa (eixo do caminho, arm1) — medido 24/07
+        pos: [0.55, 1.8]    # borda esq a 0.55m da parede → placa 0.5m ocupa x[0.55, 1.05]
         height_m: 1.4       # z do centro (altura da cabeça → bengala não pega)
-        size_m: 0.5         # diâmetro do octógono (extensão p/ colisão)
-        type: aerial        # obstáculo AÉREO — só a mochila/colete detecta
+        size_m: 0.5         # largura da placa (50 cm)
+        type: aerial
       - id: cadeira
-        y: 4.0                            # sempre em y=4 (medido 24/07)
-        x: {esquerda: 0.0, direita: 0.8}  # Layout A=ESQ (x=0) · B=DIR (x=0.8) — --cadeira seleciona
+        y: 4.0                            # sempre em y=4
+        x: {esquerda: 0.0, direita: 0.8}  # BORDA esq da cadeira: A=0 (encostada esq) · B=0.8
         height_m: 0.9       # altura física da cadeira (base em z=0, no chão)
-        size_m: 0.5         # footprint aprox. (extensão p/ colisão)
-        type: floor         # obstáculo de CHÃO
+        size_m: 0.5         # footprint (50 cm) → ocupa x[x, x+0.5]
+        type: floor
         movable: true       # muda de lado entre passadas (--cadeira ou sufixo esq/dir no trial_id)
 
     # Mesmos marcadores físicos do U_esq + 2 novos no fundo da extensão
