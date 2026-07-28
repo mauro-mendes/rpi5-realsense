@@ -618,7 +618,8 @@ def main():
                 _cad = layout or args.cadeira
                 if slave_ip:
                     wall0 = time.time()
-                    ack = _req({"cmd": "START", "trial_id": tid, "wall": wall0})
+                    ack = _req({"cmd": "START", "trial_id": tid, "wall": wall0,
+                                "corridor": args.corridor})   # escravo usa p/ nav on/off (reto=off)
                     if ack is None:
                         print(f"  ⚠ START não confirmado pelo {slave_name} — NÃO comece a passada. Re-tente.")
                         continue
