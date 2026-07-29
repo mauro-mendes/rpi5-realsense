@@ -473,6 +473,9 @@ def main():
                         help="Layout PADRÃO da cadeira no RETO (A=esquerda x=0 · B=direita x=0.8). "
                              "Dá p/ sobrescrever por passada: digite 'esq' ou 'dir' após o trial_id "
                              "(ex.: 'P03_reto_2 dir'). Só afeta o reto; placa PARE é fixa.")
+    parser.add_argument("--user", action="store_true",
+                        help="NOVO participante: calibra o auto-zero do rumo do colete no 1º trial "
+                             "(pessoa PARADA/centrada/de frente no START). Só o 1º trial calibra.")
     args = parser.parse_args()
 
     if args.colete and args.bengala:
@@ -604,6 +607,7 @@ def main():
             def _req(obj):          # sem escravo → no-op
                 return None
 
+        _calib = [bool(args.user)]   # mutável p/ o thread: só o 1º trial calibra o rumo
         def _control():
             _lay = {"esq": "esquerda", "esquerda": "esquerda", "dir": "direita", "direita": "direita"}
             while trial["run"]:
@@ -619,12 +623,15 @@ def main():
                 if slave_ip:
                     wall0 = time.time()
                     ack = _req({"cmd": "START", "trial_id": tid, "wall": wall0,
-                                "corridor": args.corridor})   # escravo usa p/ nav on/off (reto=off)
+                                "corridor": args.corridor,        # nav on/off (reto=off)
+                                "calibrate": _calib[0]})          # 1º trial c/ --user recalibra o rumo
                     if ack is None:
                         print(f"  ⚠ START não confirmado pelo {slave_name} — NÃO comece a passada. Re-tente.")
                         continue
                     off = ack.get("wall", wall0) - wall0
-                    print(f"  ✓ {slave_name} gravando (offset {slave_name}−mestre {off:+.3f}s · cadeira={_cad}) — Enter p/ STOP.")
+                    _cmsg = " · CALIBRANDO rumo (fique parado ~1.5s)" if _calib[0] else ""
+                    print(f"  ✓ {slave_name} gravando (offset {slave_name}−mestre {off:+.3f}s · cadeira={_cad}){_cmsg} — Enter p/ STOP.")
+                    _calib[0] = False   # só o 1º trial calibra
                 else:
                     print(f"  ✓ GT gravando (C1 · cadeira={_cad}) — Enter p/ STOP.")
                 trial["cadeira_req"] = _cad
