@@ -63,6 +63,9 @@ else:
     BALL_HSV_HIGH = np.array([85, 255, 255], dtype=np.uint8)
 
 MIN_BALL_AREA = 80       # px² — bola 150mm: ~254px² a 5m, ~177px² a 6m
+# Rede de segurança em Z (altura no mundo, m): a bola no boné fica ~1.5–2.0 m. Rejeita
+# deprojeções absurdas (fundo/borda) sem descartar bola válida — só gate, mantém o resto.
+Z_MIN, Z_MAX = 0.5, 3.5
 RECORD_HZ     = 10       # pontos/segundo a gravar (máximo)
 
 # ── Rotação da câmara (horizontal, apontada em +Y) ───────────────────────────
@@ -417,7 +420,7 @@ def generate_path_plot(trajectory: list, cam_pos: np.ndarray,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-def _save_trial(trial_id, trajectory, traj_times, traj_wall, cam_pos, args, cfg,
+def _save_trial(trial_id, trajectory, traj_times, traj_wall, traj_rad, cam_pos, args, cfg,
                 cadeira="esquerda"):
     """Salva 1 CSV por trial COM a coluna `wall` (epoch) — é ela que sincroniza com o
     EventLogger do colete (ambos em wall, via NTP). + plot do caminho + sidecar dos obstáculos."""
@@ -428,10 +431,10 @@ def _save_trial(trial_id, trajectory, traj_times, traj_wall, cam_pos, args, cfg,
     csv_path = OUT_DIR / f"trajectory_{trial_id}_{ts}.csv"
     with open(csv_path, "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["n", "t_s", "wall", "x_m", "y_m", "z_m"])
-        for i, (p, t, wl) in enumerate(zip(trajectory, traj_times, traj_wall)):
+        w.writerow(["n", "t_s", "wall", "x_m", "y_m", "z_m", "rad_px"])
+        for i, (p, t, wl, rd) in enumerate(zip(trajectory, traj_times, traj_wall, traj_rad)):
             w.writerow([i, f"{t:.3f}", f"{wl:.3f}",
-                        f"{p[0]:.4f}", f"{p[1]:.4f}", f"{p[2]:.4f}"])
+                        f"{p[0]:.4f}", f"{p[1]:.4f}", f"{p[2]:.4f}", rd])
     print(f"[trial] {trial_id}: {len(trajectory)} pontos → {csv_path.name}  (cadeira: {cadeira})")
     # sidecar dos obstáculos USADOS neste trial (posição da cadeira depende do layout) — a análise
     # de colisão lê daqui a posição exata da cadeira/placa por passada.
@@ -548,6 +551,7 @@ def main():
     trajectory:  list[np.ndarray] = []
     traj_times:  list[float]      = []   # segundos desde início da gravação
     traj_wall:   list[float]      = []   # epoch (wall) de cada ponto — p/ sync c/ o colete (NTP)
+    traj_rad:    list[int]        = []   # raio (px) da bola por ponto — qualidade/distância
     t0_record:   float            = 0.0  # timestamp do primeiro ponto
     show_mask  = False
     save_idx   = 0
@@ -669,7 +673,7 @@ def main():
                 if trial["start_req"] is not None:
                     trial["id"] = trial["start_req"]; trial["start_req"] = None
                     trial["cadeira"] = trial.get("cadeira_req") or args.cadeira
-                    trajectory.clear(); traj_times.clear(); traj_wall.clear()
+                    trajectory.clear(); traj_times.clear(); traj_wall.clear(); traj_rad.clear()
                     t0_record = 0.0; trial["active"] = True
                     if args.record:                 # abre mp4 H.264 deste trial
                         if video_writer is not None:   # START sem STOP anterior — fecha o aberto
@@ -681,7 +685,7 @@ def main():
                 if trial["stop_req"] is not None:
                     _tid = trial["stop_req"]; trial["stop_req"] = None
                     trial["active"] = False
-                    _save_trial(_tid, trajectory, traj_times, traj_wall, cam_pos, args, cfg,
+                    _save_trial(_tid, trajectory, traj_times, traj_wall, traj_rad, cam_pos, args, cfg,
                                 trial.get("cadeira", args.cadeira))
                     if video_writer is not None:    # fecha o mp4 do trial
                         video_writer.release(); video_writer = None
@@ -758,12 +762,14 @@ def main():
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                                     (0, 255, 0), 2)
                         # grava com limite de taxa. Em --trials, só grava com trial ATIVO.
-                        if now - last_record >= RECORD_DT and (not args.trials or trial["active"]):
+                        if (now - last_record >= RECORD_DT and (not args.trials or trial["active"])
+                                and Z_MIN <= float(ball_world[2]) <= Z_MAX):
                             if not trajectory:
                                 t0_record = now
                             trajectory.append(ball_world.copy())
                             traj_times.append(now - t0_record)
                             traj_wall.append(now)          # epoch p/ sync com o colete (NTP)
+                            traj_rad.append(int(brad))     # raio (px) — qualidade/distância
                             last_record = now
 
                     if show_mask:
@@ -820,6 +826,7 @@ def main():
                     elif key == ord("r"):
                         trajectory.clear()
                         traj_times.clear()
+                        traj_wall.clear(); traj_rad.clear()
                         print("Trajectória limpa — a gravar de novo.")
                     elif key == ord("b"):
                         show_mask = not show_mask
