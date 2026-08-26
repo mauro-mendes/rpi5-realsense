@@ -64,6 +64,7 @@ else:
 
 MIN_BALL_AREA = 80       # px² — bola 150mm: ~254px² a 5m, ~177px² a 6m
 RECORD_HZ     = 10       # pontos/segundo a gravar (máximo)
+CALIB_COUNTDOWN = 3      # s — contador do autozero por passada (pessoa PARADA); colete calibra ~1.5s
 
 # ── Rotação da câmara (horizontal, apontada em +Y) ───────────────────────────
 # X_cam = X_world  |  Y_cam = -Z_world  |  Z_cam = Y_world
@@ -607,7 +608,6 @@ def main():
             def _req(obj):          # sem escravo → no-op
                 return None
 
-        _calib = [bool(args.user)]   # mutável p/ o thread: só o 1º trial calibra o rumo
         def _control():
             _lay = {"esq": "esquerda", "esquerda": "esquerda", "dir": "direita", "direita": "direita"}
             while trial["run"]:
@@ -620,22 +620,28 @@ def main():
                 if len(parts) == 2 and parts[1].lower() in _lay:
                     tid, layout = parts[0].strip(), _lay[parts[1].lower()]
                 _cad = layout or args.cadeira
+                do_calib = False; off = 0.0
                 if slave_ip:
                     wall0 = time.time()
+                    do_calib = bool(args.user) and "reto" not in str(args.corridor).lower()  # --user: recalibra o rumo em TODA passada de S/U (no reto a nav/roll não é usada)
                     ack = _req({"cmd": "START", "trial_id": tid, "wall": wall0,
                                 "corridor": args.corridor,        # nav on/off (reto=off)
-                                "calibrate": _calib[0]})          # 1º trial c/ --user recalibra o rumo
+                                "calibrate": do_calib})
                     if ack is None:
                         print(f"  ⚠ START não confirmado pelo {slave_name} — NÃO comece a passada. Re-tente.")
                         continue
                     off = ack.get("wall", wall0) - wall0
-                    _cmsg = " · CALIBRANDO rumo (fique parado ~1.5s)" if _calib[0] else ""
-                    print(f"  ✓ {slave_name} gravando (offset {slave_name}−mestre {off:+.3f}s · cadeira={_cad}){_cmsg} — Enter p/ STOP.")
-                    _calib[0] = False   # só o 1º trial calibra
+                trial["cadeira_req"] = _cad
+                trial["start_req"] = tid                  # começa a gravar (o colete calibra o rumo agora, se do_calib)
+                if do_calib:
+                    print(f"  ⏳ CALIBRANDO O RUMO — MANTENHA A PESSOA PARADA, CENTRALIZADA E DE FRENTE:")
+                    for _k in range(CALIB_COUNTDOWN, 0, -1):
+                        print(f"        {_k}...", flush=True); time.sleep(1)
+                    print(f"  ✓ rumo calibrado — PODE COMEÇAR  (offset {slave_name}−mestre {off:+.3f}s · cadeira={_cad}) — Enter p/ STOP.")
+                elif slave_ip:
+                    print(f"  ✓ {slave_name} gravando (offset {off:+.3f}s · cadeira={_cad}) — Enter p/ STOP.")
                 else:
                     print(f"  ✓ GT gravando (C1 · cadeira={_cad}) — Enter p/ STOP.")
-                trial["cadeira_req"] = _cad
-                trial["start_req"] = tid
                 input()
                 if slave_ip:
                     _req({"cmd": "STOP", "trial_id": tid})
