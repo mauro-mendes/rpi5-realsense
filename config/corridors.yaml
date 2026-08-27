@@ -178,7 +178,7 @@ corridors:
         y: 4.0                            # sempre em y=4
         x: {esquerda: 0.0, direita: 0.8}  # BORDA esq da cadeira: A=0 (encostada esq) · B=0.8
         height_m: 0.9       # altura física da cadeira (base em z=0, no chão)
-        size_m: 0.5         # footprint (50 cm) → ocupa x[x, x+0.5]
+        size_m: 0.4         # footprint (40 cm, MEDIDO) → ocupa x[x, x+0.4]
         type: floor
         movable: true       # muda de lado entre passadas (--cadeira ou sufixo esq/dir no trial_id)
 
