@@ -70,16 +70,33 @@ PATCH = 2                    # patch (2*PATCH+1)^2 para a mediana de profundidad
 
 
 def git_commit():
-    """Commit do codigo que gerou os dados. No ciclo remoto (eu corrijo -> push -> voces
-    pull -> testam) sem isso a gente depura a versao errada."""
-    import subprocess
+    """Identifica a versao EXATA do codigo que rodou. No ciclo remoto (eu corrijo -> push ->
+    voces pull -> testam) sem isso a gente depura a versao errada.
+
+    Devolve 'sha:<hash do arquivo> git:<commit>'.
+
+    O `sha` e do PROPRIO ARQUIVO: funciona mesmo se o script for COPIADO para fora do repo.
+    O `git` so aparece se ESTE arquivo estiver rastreado no repo da pasta onde ele esta -
+    senao daria o commit do repo do colega (ex.: workspace ROS), que enganaria: a gente
+    acharia que sabe a versao e estaria olhando outra coisa."""
+    import hashlib, subprocess
+    here = os.path.dirname(os.path.abspath(__file__))
     try:
-        return subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=os.path.dirname(os.path.abspath(__file__)),
-            text=True, stderr=subprocess.DEVNULL).strip()
+        with open(os.path.abspath(__file__), "rb") as f:
+            sha = hashlib.sha1(f.read()).hexdigest()[:8]
     except Exception:
-        return "?"
+        sha = "?"
+    git = "-"
+    try:                       # universal_newlines (nao text=) p/ funcionar no py3.6
+        subprocess.check_output(
+            ["git", "ls-files", "--error-unmatch", os.path.basename(os.path.abspath(__file__))],
+            cwd=here, universal_newlines=True, stderr=subprocess.DEVNULL)
+        git = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=here, universal_newlines=True, stderr=subprocess.DEVNULL).strip()
+    except Exception:
+        pass                   # nao versionado aqui: fica so o sha, que basta
+    return "sha:%s git:%s" % (sha, git)
 
 
 # ============================ ArUco / referencial ============================
@@ -332,7 +349,9 @@ def check_env():
         print("modelo      :", find_model("yolov8n.pt"))
     except SystemExit:
         print("modelo      : NAO ENCONTRADO -> use --model <caminho> ou --track ball")
-    print("codigo      : commit", git_commit())
+    print("script      :", os.path.abspath(__file__))
+    print("saida ira p/:", os.path.abspath("trajetorias"), "(muda com --out)")
+    print("codigo      :", git_commit())
     print("=" * 66)
 
 
@@ -417,7 +436,7 @@ def main():
     DIST = np.array(intr.coeffs, float)
     W, H = intr.width, intr.height
     vfov = 2 * np.degrees(np.arctan((H / 2.0) / intr.fy))
-    print(f"[versao] commit {git_commit()}")
+    print(f"[versao] {git_commit()}")
     print(f"[OK] {W}x{H}  fx={intr.fx:.1f} fy={intr.fy:.1f}  FOV vertical={vfov:.1f} deg")
     print(f"     alvo={a.track}  marcador={a.marker_size*100:.1f} cm  nivelado={'SIM' if a.level else 'nao'}")
     if want_ball and a.cam_height:
