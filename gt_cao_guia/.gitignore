@@ -1,0 +1,13 @@
+# dados de teste (dado de terceiro / participantes) e saidas — NAO versionar
+dados/
+trajetorias/
+*.bag
+*.mp4
+*.csv
+
+# PNGs intermediarios dos marcadores (o gerar_arucos.py refaz); so o PDF vai pro git
+arucos/*
+!arucos/ARUCOS_140mm_A4_IMPRIMIR.pdf
+
+__pycache__/
+*.pyc

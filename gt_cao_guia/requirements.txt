@@ -1,0 +1,7 @@
+# RealSense: pyrealsense2 NAO tem wheel para ARM64 — no RPi5 compile da fonte
+# (ver ../docs/notes.md, passo 4). Em x86_64: pip install pyrealsense2
+pyrealsense2
+opencv-contrib-python>=4.7
+numpy
+Pillow            # so p/ o PDF do gerar_arucos.py
+ultralytics       # so p/ --track person|both
