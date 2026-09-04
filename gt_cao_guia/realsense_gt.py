@@ -376,7 +376,13 @@ def main():
     ap.add_argument("--cam-height", type=float, default=None,
                     help="altura REAL da camera (m, trena) - o script confere a escala")
     ap.add_argument("--cam-dist", type=float, default=None,
-                    help="distancia horizontal REAL camera->marcador (m, trena) - 2a conferencia")
+                    help="distancia HORIZONTAL real camera->centro do marcador (m, trena) - "
+                         "2a conferencia. Se voce mediu a linha DIRETA (lente -> marcador), "
+                         "use --cam-dist-slant.")
+    ap.add_argument("--cam-dist-slant", type=float, default=None,
+                    help="distancia DIRETA lente->centro do marcador (m). Com o marcador no "
+                         "CHAO, horizontal = sqrt(direta^2 - altura^2); o script converte. "
+                         "Exige --cam-height.")
     ap.add_argument("--level", action="store_true",
                     help="camera NIVELADA: forca a vertical do mundo")
     ap.add_argument("--warmup", type=int, default=40)
@@ -403,6 +409,19 @@ def main():
     if a.check:
         check_env()
         return
+
+    # trena DIRETA (lente->marcador) -> HORIZONTAL. Marcador no chao (z=0), entao o
+    # triangulo e reto e a conversao e exata. Sem isso, um numero medido apontando a trena
+    # para o marcador acusa "escala errada" sem haver erro nenhum.
+    if a.cam_dist_slant is not None:
+        if not a.cam_height:
+            raise SystemExit("[ERRO] --cam-dist-slant exige --cam-height (e o cateto vertical).")
+        if a.cam_dist_slant <= a.cam_height:
+            raise SystemExit(f"[ERRO] --cam-dist-slant ({a.cam_dist_slant}) tem que ser MAIOR "
+                             f"que --cam-height ({a.cam_height}): e a hipotenusa.")
+        a.cam_dist = float(np.sqrt(a.cam_dist_slant ** 2 - a.cam_height ** 2))
+        print(f"[trena] direta {a.cam_dist_slant:.3f} m, altura {a.cam_height:.3f} m "
+              f"-> HORIZONTAL {a.cam_dist:.3f} m")
     if rs is None:
         raise SystemExit(f"[ERRO] pyrealsense2 nao importa: {_RS_ERR}\n"
                          f"Rode 'python realsense_gt.py --check' para o relatorio do ambiente.")
