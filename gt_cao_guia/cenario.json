@@ -54,7 +54,8 @@
   },
 
   "captura": {
-    "alvo": "ball",
+    "alvo": "both",
+    "_nota_alvo": "both = bola E pessoa na mesma passada (a bola serve de regua p/ medir o erro do bbox). Use \"ball\" p/ desligar o YOLO.",
     "rate_hz": 10.0
   }
 }
