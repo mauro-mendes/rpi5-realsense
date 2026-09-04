@@ -103,13 +103,98 @@ def para_recinto(P, yaw_deg, cen):
 
 
 # -------------------------------------------------------------------- figura
+def _cor_tempo(f):
+    """Rampa tipo 'plasma' em Python puro (sem matplotlib): f de 0 a 1 -> '#rrggbb'."""
+    pts = [(0.00, (13, 8, 135)), (0.25, (126, 3, 168)), (0.50, (204, 71, 120)),
+           (0.75, (248, 149, 64)), (1.00, (240, 249, 33))]
+    f = 0.0 if f < 0 else (1.0 if f > 1 else f)
+    for i in range(len(pts) - 1):
+        a, ca = pts[i]; b, cb = pts[i + 1]
+        if a <= f <= b:
+            t = 0.0 if b == a else (f - a) / (b - a)
+            return "#%02x%02x%02x" % tuple(int(ca[j] + t * (cb[j] - ca[j])) for j in range(3))
+    return "#f0f921"
+
+
+def plota_plano_svg(P_rec, tempos, cen, out_svg, titulo=""):
+    """Planta em SVG, SEM NENHUMA DEPENDENCIA (nem matplotlib). Abre em qualquer navegador.
+    Existe porque o ambiente do laboratorio pode nao ter matplotlib - e a planta e o
+    principal retorno visual de cada passada, nao pode depender de uma lib extra."""
+    rec = cen.get("recinto", {})
+    Wr = float(rec.get("largura_m", 2.16)); Lr = float(rec.get("profundidade_m", 3.50))
+    c = cen.get("camera") or {}
+    xs = [0.0, Wr] + ([c["x_m"]] if c else []) + list(P_rec[:, 0] if len(P_rec) else [])
+    ys = [0.0, Lr] + ([c["y_m"]] if c else []) + list(P_rec[:, 1] if len(P_rec) else [])
+    x0, x1 = min(xs) - 0.35, max(xs) + 0.35
+    y0, y1 = min(ys) - 0.35, max(ys) + 0.35
+    ESC = 190.0                                   # px por metro
+    Wpx, Hpx = (x1 - x0) * ESC, (y1 - y0) * ESC + 34
+    def X(x): return (x - x0) * ESC
+    def Y(y): return (y1 - y) * ESC + 34          # SVG cresce p/ baixo
+
+    o = ['<svg xmlns="http://www.w3.org/2000/svg" width="%.0f" height="%.0f" '
+         'viewBox="0 0 %.0f %.0f"><rect width="100%%" height="100%%" fill="white"/>'
+         % (Wpx, Hpx, Wpx, Hpx),
+         '<text x="10" y="22" font-family="sans-serif" font-size="17" '
+         'font-weight="bold">%s</text>' % titulo]
+    o.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="none" '
+             'stroke="#333" stroke-width="4"/>' % (X(0), Y(Lr), Wr*ESC, Lr*ESC))
+    d = rec.get("divisoria")
+    if d:
+        o.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="#b03030" '
+                 'stroke-width="8"/>' % (X(d["x0_m"]), Y(d["y_m"]), X(d["x1_m"]), Y(d["y_m"])))
+    for mid, m in (cen.get("marcadores") or {}).items():
+        cor = "#000" if m.get("referencia") else "#1565c0"
+        s_ = float(m.get("tamanho_m", 0.14))
+        if m.get("tipo") == "chao":
+            o.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s"/>'
+                     % (X(m["x_m"]-s_/2), Y(m["y_m"]+s_/2), s_*ESC, s_*ESC, cor))
+        else:
+            o.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" '
+                     'stroke-width="8"/>' % (X(m["x_m"]), Y(m["y_m"]-s_/2),
+                                             X(m["x_m"]), Y(m["y_m"]+s_/2), cor))
+        o.append('<text x="%.1f" y="%.1f" font-family="sans-serif" font-size="12" '
+                 'fill="%s">ID %s%s</text>' % (X(m["x_m"])+13, Y(m["y_m"])+4, cor, mid,
+                                               " (origem)" if m.get("referencia") else ""))
+    if c:
+        o.append('<circle cx="%.1f" cy="%.1f" r="10" fill="#f2c200" stroke="#000" '
+                 'stroke-width="2"/>' % (X(c["x_m"]), Y(c["y_m"])))
+        o.append('<text x="%.1f" y="%.1f" font-family="sans-serif" font-size="12" '
+                 'font-weight="bold">camera</text>' % (X(c["x_m"])-22, Y(c["y_m"])+26))
+    n = len(P_rec)
+    if n > 1:
+        t0, t1 = float(tempos[0]), float(tempos[-1])
+        rng = (t1 - t0) or 1.0
+        for i in range(n - 1):
+            o.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" '
+                     'stroke-width="3.2" stroke-linecap="round"/>'
+                     % (X(P_rec[i,0]), Y(P_rec[i,1]), X(P_rec[i+1,0]), Y(P_rec[i+1,1]),
+                        _cor_tempo((float(tempos[i]) - t0) / rng)))
+        o.append('<circle cx="%.1f" cy="%.1f" r="8" fill="#1b5e20"/>'
+                 % (X(P_rec[0,0]), Y(P_rec[0,1])))
+        o.append('<circle cx="%.1f" cy="%.1f" r="8" fill="#b71c1c"/>'
+                 % (X(P_rec[-1,0]), Y(P_rec[-1,1])))
+        o.append('<text x="10" y="%.0f" font-family="sans-serif" font-size="12">'
+                 'verde = inicio  ·  vermelho = fim  ·  cor = tempo (%.0f s)</text>'
+                 % (Hpx - 8, t1 - t0))
+    o.append("</svg>")
+    with open(out_svg, "w", encoding="utf-8") as f:
+        f.write(chr(10).join(o))
+    return out_svg
+
+
 def plota_plano(P_marcador, tempos, yaw_deg, cen, out_png, titulo=""):
     """Planta do recinto com a trajetoria por cima. P_marcador = pontos no frame do
     marcador; a conversao p/ o recinto acontece aqui."""
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    from matplotlib.patches import Rectangle
+    P_rec_ = para_recinto(P_marcador, yaw_deg, cen)
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from matplotlib.patches import Rectangle
+    except ImportError:                       # ambiente sem matplotlib -> SVG puro
+        return plota_plano_svg(P_rec_, tempos, cen,
+                               os.path.splitext(out_png)[0] + ".svg", titulo)
 
     rec = cen.get("recinto", {})
     Wr = float(rec.get("largura_m", 2.16))
@@ -145,7 +230,7 @@ def plota_plano(P_marcador, tempos, yaw_deg, cen, out_png, titulo=""):
         ax.annotate("camera", (c["x_m"], c["y_m"] - 0.26), fontsize=7.5, ha="center",
                     weight="bold")
 
-    P = para_recinto(P_marcador, yaw_deg, cen)
+    P = P_rec_
     if len(P) > 1:
         sc = ax.scatter(P[:, 0], P[:, 1], c=tempos, cmap="plasma", s=9, zorder=9)
         ax.plot(P[:, 0], P[:, 1], lw=0.5, color="green", alpha=0.5, zorder=8)

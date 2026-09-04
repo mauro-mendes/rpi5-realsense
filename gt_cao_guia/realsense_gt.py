@@ -346,6 +346,12 @@ def check_env():
     else:
         print("pyrealsense2: AUSENTE ->", _RS_ERR)
     try:
+        import matplotlib
+        print("matplotlib  :", matplotlib.__version__)
+    except Exception as e:
+        print("matplotlib  : ausente ->", e, " (a planta sai em SVG, sem perder nada)")
+    print("cenario.json:", "ok" if CEN and CEN.carrega_cenario()[0] else "NAO CARREGADO")
+    try:
         import ultralytics
         print("ultralytics :", ultralytics.__version__)
     except Exception as e:
@@ -570,8 +576,18 @@ def main():
             fora = "" if a.ball_range[0] <= z <= a.ball_range[1] else "   <-- FORA DA FAIXA!"
             print(f"  [BOLA] altura medida nesta passada: {z:.3f} m{fora}")
         print(f"  [META] {base}.meta.json")
-        # PLANTA da passada: trajetoria desenhada dentro do recinto
-        if cen and yaw_rec is not None and zb:
+        # PLANTA da passada: trajetoria desenhada dentro do recinto.
+        # Cada motivo de NAO gerar e dito em voz alta - falhar em silencio aqui custou
+        # uma ida e volta no laboratorio.
+        if not cen:
+            print("  [PLANO] nao gerado: cenario.json nao carregou"
+                  + (" (cenario.py nao foi importado)" if CEN is None else ""))
+        elif yaw_rec is None:
+            print("  [PLANO] nao gerado: o yaw nao foi deduzido no travamento "
+                  "(procure a linha '[cenario] yaw do marcador' no arranque)")
+        elif not zb:
+            print("  [PLANO] nao gerado: nenhuma amostra de BOLA nesta passada")
+        else:
             try:
                 Pm = np.array([[float(r["x_world"]), float(r["y_world"])]
                                for r in rows if r["target"] == "ball"], float)
