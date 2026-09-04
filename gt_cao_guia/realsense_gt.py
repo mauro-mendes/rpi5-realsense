@@ -65,12 +65,14 @@ except Exception as _e:
     rs, _RS_ERR = None, _e
 
 try:                                  # opcional: so existe se o cenario.py estiver junto
-    import cenario as CEN
-except Exception:
-    CEN = None
+    import cenario as CEN             # (guardo o erro: se faltar, quero dizer QUAL e o motivo)
+    _CEN_ERR = None
+except Exception as _e:
+    CEN, _CEN_ERR = None, _e
 
 DICT_TYPE = cv2.aruco.DICT_4X4_50
 DEPTH_MIN, DEPTH_MAX = 0.2, 12.0
+_AQUI = os.path.dirname(os.path.abspath(__file__))
 PATCH = 2                    # patch (2*PATCH+1)^2 para a mediana de profundidade da bola
 
 
@@ -377,6 +379,9 @@ CSV_COLS = ["timestamp_iso", "track_id", "x_world", "y_world", "z_world",
 
 def main():
     ap = argparse.ArgumentParser(description="GT RealSense fixa + ArUco travado: bola e/ou pessoa")
+    ap.add_argument("--cenario", default=None,
+                    help="caminho do cenario.json. Default: ao lado deste script. Util quando "
+                         "o script foi COPIADO p/ outra pasta e o cenario ficou no repo.")
     ap.add_argument("--check", action="store_true",
                     help="so verifica o ambiente (versoes, modelo, camera) e sai")
     ap.add_argument("--track", choices=["ball", "person", "both"], default="both")
@@ -424,8 +429,28 @@ def main():
                     help="grava a sessao inteira em .bag (reprocessavel; ~1-2 GB/min)")
     # ---- cenario.json vira o PADRAO (linha de comando ainda sobrepoe) ----
     cen, cen_path = ({}, None)
+    _arg_cen = None
+    for _i, _t in enumerate(sys.argv):
+        if _t == "--cenario" and _i + 1 < len(sys.argv):
+            _arg_cen = sys.argv[_i + 1]
+        elif _t.startswith("--cenario="):
+            _arg_cen = _t.split("=", 1)[1]
+    # --cenario aponta p/ o JSON; o cenario.py mora na MESMA pasta. Se o script foi copiado
+    # p/ fora do repo, e por aqui que ele reencontra o modulo - senao a flag nao resolveria
+    # nada (sem o modulo nao ha codigo p/ ler o json nem p/ desenhar).
+    global CEN, _CEN_ERR
+    if CEN is None and _arg_cen:
+        _d = os.path.dirname(os.path.abspath(_arg_cen))
+        if _d and _d not in sys.path:
+            sys.path.insert(0, _d)
+        try:
+            import cenario as _C
+            CEN, _CEN_ERR = _C, None
+            print(f"[cenario] modulo carregado de {_d}")
+        except Exception as _e2:
+            _CEN_ERR = _e2
     if CEN is not None:
-        cen, cen_path = CEN.carrega_cenario()
+        cen, cen_path = CEN.carrega_cenario(_arg_cen)
     if cen:
         rid, mref = CEN.marcador_ref(cen)
         d3, dh = CEN.dist_camera_marcador(cen)
@@ -450,6 +475,11 @@ def main():
         ap.set_defaults(**padroes)
 
     a = ap.parse_args()
+    if not cen:
+        print("[cenario] AUSENTE -> sem planta ao fim das passadas."
+              + (f" (import falhou: {_CEN_ERR})" if CEN is None else f" (procurei em {cen_path})"))
+        print("          copie cenario.py + cenario.json para junto do script, "
+              "ou use --cenario <caminho>")
     if cen:
         print(f"[cenario] {os.path.basename(cen_path)}: recinto "
               f"{cen['recinto']['largura_m']}x{cen['recinto']['profundidade_m']} m, "
@@ -580,8 +610,13 @@ def main():
         # Cada motivo de NAO gerar e dito em voz alta - falhar em silencio aqui custou
         # uma ida e volta no laboratorio.
         if not cen:
-            print("  [PLANO] nao gerado: cenario.json nao carregou"
-                  + (" (cenario.py nao foi importado)" if CEN is None else ""))
+            if CEN is None:
+                print(f"  [PLANO] nao gerado: nao consegui importar o cenario.py ({_CEN_ERR})")
+                print(f"          -> copie cenario.py e cenario.json para {_AQUI}")
+                print(f"          -> ou rode com --cenario /caminho/para/cenario.json")
+            else:
+                print(f"  [PLANO] nao gerado: cenario.json nao encontrado em {cen_path}")
+                print(f"          -> rode com --cenario /caminho/para/cenario.json")
         elif yaw_rec is None:
             print("  [PLANO] nao gerado: o yaw nao foi deduzido no travamento "
                   "(procure a linha '[cenario] yaw do marcador' no arranque)")
