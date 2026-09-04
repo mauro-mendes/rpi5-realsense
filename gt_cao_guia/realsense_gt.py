@@ -52,12 +52,17 @@ Teclas:
     R      - refaz o travamento da pose
     Q      - sai
 """
-import argparse, csv, json, os, time
+import argparse, csv, json, os, sys, time
 from datetime import datetime
 
 import cv2
 import numpy as np
-import pyrealsense2 as rs
+
+try:                                  # import tolerante: --check tem que rodar mesmo
+    import pyrealsense2 as rs         # sem a lib instalada (e um dos itens que ele checa)
+    _RS_ERR = None
+except Exception as _e:
+    rs, _RS_ERR = None, _e
 
 DICT_TYPE = cv2.aruco.DICT_4X4_50
 DEPTH_MIN, DEPTH_MAX = 0.2, 12.0
@@ -267,6 +272,70 @@ def associate(tracks, dets, wall, gate_m, max_speed):
     return out
 
 
+def find_model(name):
+    """Acha o .pt em disco SEM deixar a ultralytics tentar baixar. O laboratorio e offline:
+    um download silencioso vira travamento sem explicacao. Se nao achar, falha dizendo o
+    que fazer."""
+    if os.path.isabs(name):
+        if os.path.exists(name):
+            return name
+        raise SystemExit(f"[ERRO] modelo nao encontrado: {name}")
+    here = os.path.dirname(os.path.abspath(__file__))
+    cand = [os.path.join(here, name), os.path.join(os.getcwd(), name),
+            os.path.join(here, "..", name), os.path.join(os.getcwd(), "..", name)]
+    for c in cand:
+        if os.path.exists(c):
+            return os.path.abspath(c)
+    linhas = [f"[ERRO] '{name}' nao encontrado. Procurei em:"]
+    linhas += ["  " + os.path.abspath(c) for c in cand]
+    linhas += ["",
+               "NAO vou deixar a ultralytics baixar (offline). Opcoes:",
+               f"  - copie o {name} que voce ja usa para esta pasta, ou",
+               f"  - rode com --model /caminho/completo/para/{name}, ou",
+               "  - rode com --track ball (nao usa YOLO nenhum)."]
+    raise SystemExit("\n".join(linhas))
+
+
+def check_env():
+    """--check: relatorio do ambiente, sem tocar na camera. Rode uma vez apos o git pull."""
+    print("=" * 66)
+    print("python      :", sys.version.split()[0])
+    try:
+        cv2.aruco.ArucoDetector
+        api = "API nova (>=4.7)"
+    except AttributeError:
+        api = "API antiga (<4.7) - suportada"
+    print("opencv      :", cv2.__version__, " aruco:", api)
+    print("numpy       :", np.__version__)
+    print("solvePnP    :", "IPPE_SQUARE" if hasattr(cv2, "SOLVEPNP_IPPE_SQUARE")
+          else "ITERATIVE (fallback, ok)")
+    if rs is not None:
+        print("pyrealsense2:", getattr(rs, "__version__", "ok"))
+        try:
+            devs = rs.context().query_devices()
+            if len(devs):
+                for d in devs:
+                    print("camera      :", d.get_info(rs.camera_info.name),
+                          "sn", d.get_info(rs.camera_info.serial_number))
+            else:
+                print("camera      : NENHUMA conectada")
+        except Exception as e:
+            print("camera      : erro ao consultar ->", e)
+    else:
+        print("pyrealsense2: AUSENTE ->", _RS_ERR)
+    try:
+        import ultralytics
+        print("ultralytics :", ultralytics.__version__)
+    except Exception as e:
+        print("ultralytics : ausente ->", e, " (so precisa p/ --track person|both)")
+    try:
+        print("modelo      :", find_model("yolov8n.pt"))
+    except SystemExit:
+        print("modelo      : NAO ENCONTRADO -> use --model <caminho> ou --track ball")
+    print("codigo      : commit", git_commit())
+    print("=" * 66)
+
+
 # ================================== Main =====================================
 CSV_COLS = ["timestamp_iso", "track_id", "x_world", "y_world", "z_world",
             "target", "wall", "t_s", "frame",
@@ -278,6 +347,8 @@ CSV_COLS = ["timestamp_iso", "track_id", "x_world", "y_world", "z_world",
 
 def main():
     ap = argparse.ArgumentParser(description="GT RealSense fixa + ArUco travado: bola e/ou pessoa")
+    ap.add_argument("--check", action="store_true",
+                    help="so verifica o ambiente (versoes, modelo, camera) e sai")
     ap.add_argument("--track", choices=["ball", "person", "both"], default="both")
     ap.add_argument("--ref-id", type=int, default=None,
                     help="ID do marcador de REFERENCIA. Default: menor ID visivel.")
@@ -310,6 +381,12 @@ def main():
     ap.add_argument("--bag", default=None,
                     help="grava a sessao inteira em .bag (reprocessavel; ~1-2 GB/min)")
     a = ap.parse_args()
+    if a.check:
+        check_env()
+        return
+    if rs is None:
+        raise SystemExit(f"[ERRO] pyrealsense2 nao importa: {_RS_ERR}\n"
+                         f"Rode 'python realsense_gt.py --check' para o relatorio do ambiente.")
 
     v = [int(x) for x in a.hsv.split(",")]
     HSV_LO, HSV_HI = np.array(v[:3], np.uint8), np.array(v[3:], np.uint8)
@@ -321,9 +398,7 @@ def main():
     model = None
     if want_person:
         from ultralytics import YOLO
-        here = os.path.dirname(os.path.abspath(__file__))
-        mp = a.model if os.path.isabs(a.model) else os.path.join(here, a.model)
-        mp = mp if os.path.exists(mp) else a.model
+        mp = find_model(a.model)
         print(f"[YOLO] carregando {mp}")
         model = YOLO(mp)
 

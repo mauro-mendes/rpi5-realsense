@@ -12,16 +12,27 @@ que estava errado — incluindo a origem do deslocamento de ~60 cm — está em
 
 ---
 
-## Instalação
+## Instalação: nenhuma
+
+Rode **no mesmo ambiente em que você já roda o script original**. Não instale nada e não
+atualize nada — um `pip install` aqui pode subir o OpenCV/numpy e quebrar o que já funciona.
+O script foi escrito para conviver com o que existe: detecta sozinho se o `aruco` é a API
+antiga (< 4.7) ou a nova, e usa `solvePnP` em vez do `estimatePoseSingleMarkers` (que some
+nas versões novas). Detalhes em [`requirements.txt`](requirements.txt).
+
+Confira o ambiente antes de qualquer coisa:
 
 ```bash
-pip install -r requirements.txt
+python realsense_gt.py --check
 ```
 
-`pyrealsense2` não tem wheel para ARM64: no Raspberry Pi é preciso compilar da fonte
-(passo a passo em [`../docs/notes.md`](../docs/notes.md)). Em x86_64 o `pip install` resolve.
+Ele reporta Python, OpenCV (e qual API do aruco será usada), numpy, pyrealsense2, câmera
+conectada, ultralytics, onde está o `yolov8n.pt` e o **commit do código**. Não toca na câmera.
 
-Para rastrear pessoa é preciso o `yolov8n.pt` na pasta do script (uso offline).
+O `yolov8n.pt` **não é baixado** — o laboratório é offline e um download silencioso vira um
+travamento sem causa aparente. O script procura o arquivo em disco e, se não achar, diz o que
+fazer. Se o seu estiver em outra pasta, use `--model /caminho/para/yolov8n.pt`; ou rode com
+`--track ball`, que nem importa a ultralytics.
 
 ---
 

@@ -1,7 +1,28 @@
-# RealSense: pyrealsense2 NAO tem wheel para ARM64 — no RPi5 compile da fonte
-# (ver ../docs/notes.md, passo 4). Em x86_64: pip install pyrealsense2
-pyrealsense2
-opencv-contrib-python>=4.7
-numpy
-Pillow            # so p/ o PDF do gerar_arucos.py
-ultralytics       # so p/ --track person|both
+# NAO instale nada se voce ja roda o script original neste ambiente.
+#
+# Este script foi escrito para rodar no MESMO ambiente do realsense_aruco_standalone.py
+# (preservado em referencia/original_colega.py), sem exigir upgrade de nada. Um
+# `pip install -r requirements.txt` aqui pode atualizar opencv/numpy e quebrar o que ja
+# funciona. Este arquivo e uma NOTA DE COMPATIBILIDADE, nao uma lista de instalacao.
+#
+# Confira o ambiente com:   python realsense_gt.py --check
+#
+# Compatibilidade:
+#   python         >= 3.7
+#   opencv         qualquer versao com o modulo aruco. Funciona com a API ANTIGA
+#                  (Dictionary_get / DetectorParameters_create, OpenCV < 4.7) e com a
+#                  NOVA (ArucoDetector, >= 4.7) - o script detecta qual esta disponivel.
+#                  Usa solvePnP (existe em todas) em vez de estimatePoseSingleMarkers
+#                  (que sumiu nas versoes novas), com fallback de IPPE_SQUARE para
+#                  ITERATIVE caso a constante nao exista.
+#   numpy          qualquer (1.x ou 2.x)
+#   pyrealsense2   o que voce ja usa
+#   ultralytics    o que voce ja usa - SO e importado com --track person|both.
+#                  Com --track ball o script nao toca em ultralytics.
+#   Pillow         opcional, so p/ gerar o PDF em gerar_arucos.py. O PDF ja esta
+#                  versionado em arucos/, entao voce nao precisa dele.
+#
+# O yolov8n.pt NAO e baixado: o script procura em disco e, se nao achar, falha
+# explicando o que fazer (o laboratorio e offline; download silencioso viraria um
+# travamento sem causa aparente). Use --model /caminho/para/yolov8n.pt se ele
+# estiver em outra pasta.
