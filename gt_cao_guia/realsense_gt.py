@@ -390,9 +390,15 @@ def main():
     ap.add_argument("--min-area", type=float, default=60.0)
     ap.add_argument("--min-radius", type=float, default=3.0)
     ap.add_argument("--ball-height", type=float, default=None,
-                    help="altura MEDIDA da bola no capacete DESTE participante (m, trena). "
-                         "Varia por pessoa. O script confere o z_world contra ela em tempo real "
-                         "-> checagem independente da pose/escala do ArUco, de graca.")
+                    help="OPCIONAL. Altura medida da bola DESTE participante (m). Nao e "
+                         "necessaria: a escala ja e conferida por --cam-height, que e do "
+                         "SETUP e nao muda entre participantes. Use so se quiser cravar a "
+                         "conferencia num participante especifico.")
+    ap.add_argument("--ball-range", type=float, nargs=2, default=[1.40, 2.10],
+                    metavar=("MIN", "MAX"),
+                    help="faixa plausivel da altura da bola (m). Definida UMA vez p/ o estudo "
+                         "inteiro, cobre todos os participantes. Pega bola errada e escala "
+                         "grosseiramente errada sem trena por pessoa. Default 1.40 2.10")
     ap.add_argument("--model", default="yolov8n.pt")
     ap.add_argument("--conf", type=float, default=0.35)
     ap.add_argument("--every-n", type=int, default=1, help="roda o YOLO a cada N frames")
@@ -459,15 +465,19 @@ def main():
     print(f"[OK] {W}x{H}  fx={intr.fx:.1f} fy={intr.fy:.1f}  FOV vertical={vfov:.1f} deg")
     print(f"     alvo={a.track}  marcador={a.marker_size*100:.1f} cm  nivelado={'SIM' if a.level else 'nao'}")
     if want_ball and a.cam_height:
-        hb = a.ball_height if a.ball_height else 1.78
-        dz = abs(hb - a.cam_height)
-        dmin = dz / np.tan(np.radians(vfov / 2.0))
-        onde = "topo" if hb > a.cam_height else "base"
-        print(f"     FOV: bola a {hb:.2f} m, camera a {a.cam_height:.2f} m (desnivel {dz:.2f} m)")
-        print(f"          -> a bola sai pelo {onde} do quadro a menos de {dmin:.2f} m da camera")
+        # pior caso da FAIXA (o participante mais alto e o mais baixo), nao de uma medida
+        # individual: o enquadramento tem que servir p/ todo mundo sem remontar a camera.
+        pior = max(abs(a.ball_range[1] - a.cam_height), abs(a.ball_range[0] - a.cam_height))
+        alvo = a.ball_range[1] if abs(a.ball_range[1] - a.cam_height) >= \
+            abs(a.ball_range[0] - a.cam_height) else a.ball_range[0]
+        dmin = pior / np.tan(np.radians(vfov / 2.0))
+        print(f"     FOV: camera a {a.cam_height:.2f} m, bolas de {a.ball_range[0]:.2f} a "
+              f"{a.ball_range[1]:.2f} m (pior desnivel {pior:.2f} m @ {alvo:.2f} m)")
+        print(f"          -> no pior caso a bola so entra em quadro alem de {dmin:.2f} m")
         if dmin > 1.5:
-            print(f"          *** SUBA A CAMERA. Na altura da bola ({hb:.2f} m) o problema some;")
-            print(f"          *** no MEIO da faixa de alturas dos participantes ele fica minimo.")
+            meio = (a.ball_range[0] + a.ball_range[1]) / 2.0
+            print(f"          *** SUBA A CAMERA para ~{meio:.2f} m (meio da faixa): assim o pior")
+            print(f"          *** caso cai para {abs(a.ball_range[1]-meio)/np.tan(np.radians(vfov/2.0)):.2f} m e serve p/ todos os participantes.")
 
     WIN = "GT - ESPACO=passada  B=mask  R=re-travar  Q=sair"
     cv2.namedWindow(WIN, cv2.WINDOW_NORMAL); cv2.resizeWindow(WIN, 960, 720)
@@ -503,14 +513,24 @@ def main():
             "params": {"marker_size_m": a.marker_size, "ref_id": ref_id, "level": a.level,
                        "hsv": a.hsv, "conf": a.conf, "gate_m": a.gate_m,
                        "max_speed": a.max_speed, "min_hits": a.min_hits, "rate_hz": a.rate,
-                       "ball_height_m": a.ball_height, "cam_height_m": a.cam_height,
-                       "cam_dist_m": a.cam_dist},
+                       "ball_height_m": a.ball_height, "ball_range_m": list(a.ball_range),
+                       "cam_height_m": a.cam_height, "cam_dist_m": a.cam_dist},
             "bag": a.bag,
         })
+        # A altura da bola sai MEDIDA da propria passada - ninguem precisa ir de trena em
+        # cada participante. Se a escala esta certa (conferida por --cam-height, que e do
+        # setup), este numero E a altura da bola daquela pessoa.
+        zb = [float(r["z_world"]) for r in rows if r["target"] == "ball"]
+        if zb:
+            meta["ball_height_medido_m"] = round(float(np.median(zb)), 3)
         with open(base + ".meta.json", "w", encoding="utf-8") as f:
             json.dump(meta, f, indent=2)
         n_b = sum(1 for r in rows if r["target"] == "ball")
         print(f"  [CSV] {len(rows)} linhas (bola {n_b} / pessoa {len(rows)-n_b}) -> {base}.csv")
+        if zb:
+            z = float(np.median(zb))
+            fora = "" if a.ball_range[0] <= z <= a.ball_range[1] else "   <-- FORA DA FAIXA!"
+            print(f"  [BOLA] altura medida nesta passada: {z:.3f} m{fora}")
         print(f"  [META] {base}.meta.json")
         rows = []
 
@@ -634,11 +654,17 @@ def main():
                             wpt = to_world(p_cam)
                             lbl = f"bola ({wpt[0]:+.2f},{wpt[1]:+.2f}) z={wpt[2]:+.2f}"
                             cor = (0, 255, 0)
-                            if a.ball_height:
+                            if a.ball_height:            # medida do participante, se houver
                                 dz = wpt[2] - a.ball_height
                                 lbl += f" dz={dz*100:+.0f}cm"
                                 if abs(dz) > 0.10:
-                                    cor = (0, 165, 255)      # z fora do esperado -> pose/escala suspeita
+                                    cor = (0, 165, 255)
+                            elif not (a.ball_range[0] <= wpt[2] <= a.ball_range[1]):
+                                # sem medida do participante: so a FAIXA plausivel. Pega bola
+                                # errada (verde qualquer no ambiente) e escala grosseiramente
+                                # errada, sem exigir trena a cada pessoa.
+                                lbl += " FORA DA FAIXA"
+                                cor = (0, 165, 255)
                             cv2.putText(frame, lbl, (bx + int(brad) + 6, by),
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, cor, 2)
                             hud.append("BOLA")

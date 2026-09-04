@@ -167,8 +167,19 @@ def main():
         linha("diferenca", f"{dz*100:+.1f} cm", st)
         if st != OK:
             veredito.append("z do alvo nao bate com a trena -> escala/pose suspeitas")
-    else:
-        linha("altura medida (trena)", "NAO informada (use --ball-height p/ conferir)", AT)
+    elif a.alvo == "ball":
+        # Sem trena por participante: basta a FAIXA plausivel. A escala em si ja foi
+        # conferida por --cam-height, que e do SETUP e nao muda entre pessoas; aqui a faixa
+        # so pega bola errada (outro objeto verde) ou escala grosseiramente fora.
+        lo, hi = par.get("ball_range_m", [1.40, 2.10])
+        dentro = float(lo) <= zmed <= float(hi)
+        linha("faixa plausivel", f"{float(lo):.2f} a {float(hi):.2f} m",
+              OK if dentro else ERRO)
+        if dentro:
+            print(f"      -> altura da bola MEDIDA pelo sistema: {zmed:.3f} m "
+                  f"(nao precisou de trena)")
+        else:
+            veredito.append(f"z={zmed:.2f} m fora da faixa - bola errada ou escala furada")
 
     cam = np.array(meta.get("cam_pos_in_marker", [np.nan] * 3), float)
     if np.isfinite(cam).all():
