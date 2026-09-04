@@ -767,6 +767,20 @@ def main():
                                     print("  OK - escala confere.")
                             else:
                                 print("  >> passe --cam-height (e --cam-dist) p/ conferir a escala!")
+                            # Quais marcadores a camera VE, e com que tamanho na imagem. E o
+                            # pre-requisito do solve multi-marcador: sem os tres ao mesmo tempo,
+                            # e com px suficiente, nao ha base longa p/ fixar a pose.
+                            if ids is not None and len(ids):
+                                print("  marcadores visiveis neste frame:")
+                                for _k, _mid in enumerate(ids.flatten().tolist()):
+                                    _q = corners[_k][0]
+                                    _lado = float(np.mean([np.linalg.norm(_q[i] - _q[(i + 1) % 4])
+                                                           for i in range(4)]))
+                                    _c = _q.mean(axis=0)
+                                    _no = (str(_mid) in (cen.get("marcadores") or {})) if cen else False
+                                    print("    ID %-3d lado %5.1f px  centro (%5.0f,%5.0f)  %s"
+                                          % (_mid, _lado, _c[0], _c[1],
+                                             "no cenario" if _no else "FORA do cenario.json"))
                             print("=" * 74 + "\n")
                             # Rotacao marcador->recinto DEDUZIDA: comparo a camera vista
                             # pelo ArUco com a posicao dela no cenario.json (trena). Nao
