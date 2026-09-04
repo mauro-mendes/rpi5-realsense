@@ -146,6 +146,32 @@ def solve_marker_pose(corners, L, K, D):
     return (rvec.reshape(3), tvec.reshape(3)) if ok else None
 
 
+def le_gravidade(frames):
+    """Direcao do 'para cima' em coordenadas da CAMERA, medida pelo acelerometro da D435i.
+
+    Em repouso o acelerometro mede a forca especifica -g, que aponta para CIMA. Normalizado,
+    e o eixo vertical do mundo visto pela camera - INDEPENDENTE de como ela esta inclinada.
+
+    Isso substitui a suposicao 'a camera esta nivelada' (que no nosso setup e provadamente
+    falsa: com a camera nivelada o marcador do chao ficaria fora do quadro) e tambem
+    substitui a inclinacao vinda do marcador rasante, que e o grau de liberdade pior
+    determinado de um ArUco visto de lado.
+
+    Devolve None se nao houver IMU ou se a leitura nao parecer repouso (|a| fora de ~1 g)."""
+    try:
+        f = frames.first_or_default(rs.stream.accel)
+        if not f:
+            return None
+        d = f.as_motion_frame().get_motion_data()
+    except Exception:
+        return None
+    v = np.array([d.x, d.y, d.z], dtype=float)
+    n = float(np.linalg.norm(v))
+    if not (8.5 < n < 11.5):          # em movimento ou leitura ruim -> descarta
+        return None
+    return v / n
+
+
 def level_rotation(R, up_cam=np.array([0.0, -1.0, 0.0])):
     """Camera NIVELADA -> o 'para cima' no frame da camera e conhecido (-Y). Forca o eixo Z
     do mundo a ser a vertical verdadeira, preservando a guinada e o sentido do marcador."""
@@ -524,6 +550,11 @@ def main():
     cfg = rs.config()
     cfg.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
     cfg.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+    try:                              # IMU: da a inclinacao REAL da camera (D435i)
+        cfg.enable_stream(rs.stream.accel)
+        _tem_imu = True
+    except Exception:
+        _tem_imu = False              # D435 sem "i" nao tem IMU
     if a.bag:
         cfg.enable_record_to_file(a.bag)
         print(f"[BAG] gravando a sessao em {a.bag}")
@@ -555,7 +586,7 @@ def main():
     WIN = "GT - ESPACO=passada  B=mask  R=re-travar  Q=sair"
     cv2.namedWindow(WIN, cv2.WINDOW_NORMAL); cv2.resizeWindow(WIN, 960, 720)
 
-    locked, ref_id, samples = False, a.ref_id, []
+    locked, ref_id, samples, grav = False, a.ref_id, [], []
     yaw_rec = None            # rotacao marcador->recinto (deduzida no travamento)
     R_wc = t_wc = cam_pos = None
     lock_info = {}
@@ -674,6 +705,9 @@ def main():
                         print(f"[ref] marcador de referencia = ID {ref_id}")
                     if ref_id in flat:
                         seen = corners[flat.index(ref_id)][0]
+                g = le_gravidade(frames)
+                if g is not None:
+                    grav.append(g)
                 if seen is not None:
                     pose = solve_marker_pose(seen, a.marker_size, K, DIST)
                     if pose is not None:
@@ -684,15 +718,27 @@ def main():
                             R_wc, _ = cv2.Rodrigues(rv)
                             ang = np.degrees(np.arccos(np.clip(
                                 abs(float(R_wc[:, 2] @ np.array([0.0, -1.0, 0.0]))), -1, 1)))
-                            leveled = False
+                            leveled, up_src, tilt = False, "nenhuma", None
+                            up_g = (np.median(np.array(grav), axis=0) if len(grav) >= 10 else None)
+                            if up_g is not None:
+                                up_g = up_g / np.linalg.norm(up_g)
+                                tilt = float(np.degrees(np.arccos(
+                                    np.clip(abs(float(up_g @ np.array([0.0, -1.0, 0.0]))), -1, 1))))
                             if a.level:
-                                if ang > 20:
-                                    print(f"[AVISO] eixo Z do marcador a {ang:.0f} deg da vertical "
-                                          f"da camera -> --level IGNORADO (camera nao nivelada ou "
-                                          f"marcador nao esta no chao).")
+                                if up_g is not None:
+                                    # VERTICAL MEDIDA pelo IMU: nao supoe camera nivelada.
+                                    R_wc = level_rotation(R_wc, up_g)
+                                    leveled, up_src = True, "IMU (gravidade)"
+                                    print(f"[vertical] do ACELEROMETRO: camera inclinada "
+                                          f"{tilt:.1f} deg  ({len(grav)} amostras)")
+                                elif ang > 20:
+                                    print(f"[AVISO] sem IMU e eixo Z do marcador a {ang:.0f} deg da "
+                                          f"vertical da camera -> vertical NAO forcada.")
                                 else:
-                                    R_wc = level_rotation(R_wc); leveled = True
-                                    print(f"[level] vertical forcada (corrigiu {ang:.1f} deg)")
+                                    R_wc = level_rotation(R_wc)
+                                    leveled, up_src = True, "suposicao camera nivelada"
+                                    print(f"[vertical] SEM IMU: supondo camera nivelada "
+                                          f"(corrigiu {ang:.1f} deg) — confira se procede")
                             t_wc = tv
                             cam_pos = -R_wc.T @ t_wc
                             locked = True
@@ -742,8 +788,26 @@ def main():
                                     if yw["erro_escala_m"] > 0.15:
                                         print("            *** os modulos discordam -> "
                                               "conferir --marker-size e as medidas do cenario")
+                            # A camera CONSEGUE ver um marcador tao abaixo? Se a geometria
+                            # do cenario exige mais inclinacao do que o IMU mediu, algo esta
+                            # errado (foi assim que descobrimos que o --level antigo mentia).
+                            if cen and tilt is not None:
+                                try:
+                                    _d3, _dh = CEN.dist_camera_marcador(cen)
+                                    _elev = np.degrees(np.arctan(a.cam_height / _dh))
+                                    _min = _elev - vfov / 2.0
+                                    print(f"           marcador a {_elev:.1f} deg abaixo da horizontal; "
+                                          f"meia-abertura {vfov/2:.1f} deg -> exige inclinar "
+                                          f">= {_min:.1f} deg")
+                                    if tilt + 3.0 < _min:
+                                        print(f"           *** IMU diz {tilt:.1f} deg, geometria exige "
+                                              f"{_min:.1f} deg. Confira o cenario ou o IMU.")
+                                except Exception:
+                                    pass
                             lock_info = {
                                 "ref_id": int(ref_id), "warmup": len(samples),
+                                "vertical_fonte": up_src, "tilt_camera_deg": tilt,
+                                "grav_amostras": len(grav),
                                 "yaw_recinto_deg": yaw_rec,
                                 "rvec": rv.tolist(), "tvec": tv.tolist(),
                                 "R_marker_from_cam": R_wc.tolist(),
@@ -855,7 +919,7 @@ def main():
             elif key == ord("b"):
                 show_mask = not show_mask
             elif key == ord("r"):
-                locked, samples, rows, rec, tracks = False, [], [], False, []
+                locked, samples, grav, rows, rec, tracks = False, [], [], [], False, []
                 yaw_rec = None
                 last_person_d = None
                 print("[reset] re-travando a pose...")
