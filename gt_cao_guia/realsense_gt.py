@@ -64,6 +64,11 @@ try:                                  # import tolerante: --check tem que rodar 
 except Exception as _e:
     rs, _RS_ERR = None, _e
 
+try:                                  # opcional: so existe se o cenario.py estiver junto
+    import cenario as CEN
+except Exception:
+    CEN = None
+
 DICT_TYPE = cv2.aruco.DICT_4X4_50
 DEPTH_MIN, DEPTH_MAX = 0.2, 12.0
 PATCH = 2                    # patch (2*PATCH+1)^2 para a mediana de profundidade da bola
@@ -411,7 +416,39 @@ def main():
     ap.add_argument("--out", default="trajetorias")
     ap.add_argument("--bag", default=None,
                     help="grava a sessao inteira em .bag (reprocessavel; ~1-2 GB/min)")
+    # ---- cenario.json vira o PADRAO (linha de comando ainda sobrepoe) ----
+    cen, cen_path = ({}, None)
+    if CEN is not None:
+        cen, cen_path = CEN.carrega_cenario()
+    if cen:
+        rid, mref = CEN.marcador_ref(cen)
+        d3, dh = CEN.dist_camera_marcador(cen)
+        cam = cen.get("camera", {})
+        padroes = {}
+        if rid is not None:
+            padroes.update(ref_id=rid, marker_size=float(mref.get("tamanho_m", 0.15)))
+        if cam:
+            padroes.update(cam_height=float(cam["z_m"]), level=bool(cam.get("nivelada")))
+        if dh:
+            padroes.update(cam_dist=round(dh, 4))
+        b = cen.get("bola", {})
+        if b.get("hsv"):
+            padroes["hsv"] = ",".join(str(int(v)) for v in b["hsv"])
+        if b.get("faixa_altura_m"):
+            padroes["ball_range"] = [float(x) for x in b["faixa_altura_m"]]
+        cap = cen.get("captura", {})
+        if cap.get("alvo"):
+            padroes["track"] = cap["alvo"]
+        if cap.get("rate_hz"):
+            padroes["rate"] = float(cap["rate_hz"])
+        ap.set_defaults(**padroes)
+
     a = ap.parse_args()
+    if cen:
+        print(f"[cenario] {os.path.basename(cen_path)}: recinto "
+              f"{cen['recinto']['largura_m']}x{cen['recinto']['profundidade_m']} m, "
+              f"ref=ID {a.ref_id}, marcador {a.marker_size*100:.1f} cm, "
+              f"camera z={a.cam_height} dist_h={a.cam_dist}")
     if a.check:
         check_env()
         return
@@ -483,6 +520,7 @@ def main():
     cv2.namedWindow(WIN, cv2.WINDOW_NORMAL); cv2.resizeWindow(WIN, 960, 720)
 
     locked, ref_id, samples = False, a.ref_id, []
+    yaw_rec = None            # rotacao marcador->recinto (deduzida no travamento)
     R_wc = t_wc = cam_pos = None
     lock_info = {}
     show_mask, rec, trial_n, frame_i = False, False, 0, 0
@@ -532,6 +570,18 @@ def main():
             fora = "" if a.ball_range[0] <= z <= a.ball_range[1] else "   <-- FORA DA FAIXA!"
             print(f"  [BOLA] altura medida nesta passada: {z:.3f} m{fora}")
         print(f"  [META] {base}.meta.json")
+        # PLANTA da passada: trajetoria desenhada dentro do recinto
+        if cen and yaw_rec is not None and zb:
+            try:
+                Pm = np.array([[float(r["x_world"]), float(r["y_world"])]
+                               for r in rows if r["target"] == "ball"], float)
+                ts_b = np.array([float(r["t_s"]) for r in rows if r["target"] == "ball"], float)
+                png = CEN.plota_plano(Pm, ts_b, yaw_rec, cen, base + "_plano.png",
+                                      titulo=f"{a.prefix} passada {trial_n}  "
+                                             f"({len(Pm)} pts, {ts_b[-1]:.0f} s)")
+                print(f"  [PLANO] {png}")
+            except Exception as e:
+                print(f"  [PLANO] falhou (CSV esta salvo): {e}")
         rows = []
 
     def add_row(target, tid, world, p_cam, u, v, d, npx, std, wall,
@@ -621,8 +671,29 @@ def main():
                             else:
                                 print("  >> passe --cam-height (e --cam-dist) p/ conferir a escala!")
                             print("=" * 74 + "\n")
+                            # Rotacao marcador->recinto DEDUZIDA: comparo a camera vista
+                            # pelo ArUco com a posicao dela no cenario.json (trena). Nao
+                            # precisa medir angulo nenhum.
+                            if cen:
+                                yw = CEN.yaw_do_marcador(cam_pos, cen)
+                                if yw:
+                                    yaw_rec = yw["yaw_deg"]
+                                    print(f"  [cenario] yaw do marcador = {yaw_rec:+.0f} deg "
+                                          f"(bruto {yw['yaw_bruto_deg']:+.1f}, "
+                                          f"residuo {yw['residuo_deg']:.1f})")
+                                    print(f"            distancia camera->marcador: "
+                                          f"recinto {yw['dist_recinto_m']:.3f} m  x  "
+                                          f"ArUco {yw['dist_marcador_m']:.3f} m  "
+                                          f"(dif {yw['erro_escala_m']*100:.0f} cm)")
+                                    if yw["residuo_deg"] > 20:
+                                        print("            *** residuo alto: as bordas do "
+                                              "marcador podem nao estar paralelas as paredes")
+                                    if yw["erro_escala_m"] > 0.15:
+                                        print("            *** os modulos discordam -> "
+                                              "conferir --marker-size e as medidas do cenario")
                             lock_info = {
                                 "ref_id": int(ref_id), "warmup": len(samples),
+                                "yaw_recinto_deg": yaw_rec,
                                 "rvec": rv.tolist(), "tvec": tv.tolist(),
                                 "R_marker_from_cam": R_wc.tolist(),
                                 "cam_pos_in_marker": cam_pos.tolist(),
@@ -734,6 +805,7 @@ def main():
                 show_mask = not show_mask
             elif key == ord("r"):
                 locked, samples, rows, rec, tracks = False, [], [], False, []
+                yaw_rec = None
                 last_person_d = None
                 print("[reset] re-travando a pose...")
             elif key == 32 and locked:

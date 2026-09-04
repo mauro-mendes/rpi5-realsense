@@ -1,0 +1,59 @@
+{
+  "_comentario": [
+    "Cenario do laboratorio - medido com trena em 04/09/2026.",
+    "O realsense_gt.py le este arquivo sozinho: nao precisa passar argumentos.",
+    "Qualquer flag na linha de comando SOBREPOE o que esta aqui.",
+    "Referencial do RECINTO: origem no canto inferior ESQUERDO, x p/ a direita,",
+    "y p/ dentro (para cima na planta), z para cima. A camera esta FORA (x>largura,",
+    "y<0), por isso as coordenadas dela caem fora do retangulo - e esperado."
+  ],
+
+  "recinto": {
+    "largura_m": 2.16,
+    "profundidade_m": 3.50,
+    "divisoria": {
+      "y_m": 0.90,
+      "x0_m": 0.81,
+      "x1_m": 2.16,
+      "_nota": "presa a parede DIREITA, deixa passagem de 0,81 m junto a ESQUERDA. Baixa - nao bloqueia a visada."
+    }
+  },
+
+  "marcadores": {
+    "0": {
+      "tipo": "chao",
+      "x_m": 2.088, "y_m": 0.45, "z_m": 0.0,
+      "tamanho_m": 0.144,
+      "referencia": true,
+      "_nota": "borda do quadrado preto encostada na parede DIREITA -> centro a 0,072 dela. 0,45 e ate o CENTRO."
+    },
+    "4": {
+      "tipo": "parede", "normal": "+x",
+      "x_m": 0.0, "y_m": 0.65, "z_m": 1.27,
+      "tamanho_m": 0.144,
+      "_nota": "PENDENTE: medir o lado do quadrado preto. Ainda NAO usado (so o ID 0 e referencia)."
+    },
+    "5": {
+      "tipo": "parede", "normal": "+x",
+      "x_m": 0.0, "y_m": 1.83, "z_m": 1.27,
+      "tamanho_m": 0.144,
+      "_nota": "PENDENTE: medir o lado do quadrado preto. Ainda NAO usado."
+    }
+  },
+
+  "camera": {
+    "x_m": 4.51, "y_m": -0.40, "z_m": 1.30,
+    "nivelada": true,
+    "_nota": "2,35 m alem da parede DIREITA, 0,40 m abaixo da parede de BAIXO, lente a 1,30 m. Conferido: distancia ate o ID 0 da 2,877 m (trena laser 2,920) e 2,567 m na horizontal (2,615 derivado)."
+  },
+
+  "bola": {
+    "hsv": [35, 50, 50, 85, 255, 255],
+    "faixa_altura_m": [1.40, 2.10]
+  },
+
+  "captura": {
+    "alvo": "ball",
+    "rate_hz": 10.0
+  }
+}

@@ -11,3 +11,6 @@ arucos/*
 
 __pycache__/
 *.pyc
+
+# figuras de diagnostico/rascunho (regeneraveis)
+_*.png
