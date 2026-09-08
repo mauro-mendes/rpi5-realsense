@@ -23,9 +23,9 @@
     "0": {
       "tipo": "chao",
       "x_m": 2.088, "y_m": 0.45, "z_m": 0.0,
-      "tamanho_m": 0.144,
+      "tamanho_m": 0.135,
       "referencia": true,
-      "_nota": "borda do quadrado preto encostada na parede DIREITA -> centro a 0,072 dela. 0,45 e ate o CENTRO."
+      "_nota": "borda do quadrado preto encostada na parede DIREITA -> centro a 0,0675 dela. 0,45 e ate o CENTRO. TAMANHO CALIBRADO 04/09: a trena tinha dado 14,4 cm, mas a bola parada sobre o marcador (92 amostras) mais a altura da camera mais o |tvec| convergem em 13,4-13,5. Com 0.135 o residuo da bola cai de 20,5 cm para 3,6 cm e a altura da camera bate com a trena em 2 mm."
     },
     "4": {
       "tipo": "parede", "normal": "+x",
