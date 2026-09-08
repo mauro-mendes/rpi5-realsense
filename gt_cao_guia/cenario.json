@@ -48,6 +48,12 @@
     "_nota": "2,35 m alem da parede DIREITA, 0,40 m abaixo da parede de BAIXO, lente a 1,30 m. Conferido: distancia ate o ID 0 da 2,877 m (trena laser 2,920) e 2,567 m na horizontal (2,615 derivado)."
   },
 
+  "depth": {
+    "A": 1.0,
+    "B": 0.0,
+    "_nota": "Correcao da profundidade: d_real = d*(A + B*d). A=1/B=0 = DESLIGADO (atual). A D435 le CURTO e o erro cresce com a distancia: medido neste cenario encostando a bola em marcos conhecidos -> 0 cm a 2,74 m, 21 cm a 4,43 m, 16 cm a 4,88 m, quase tudo radial (= depth). Ajuste provisorio com esses 3 pontos: A=0.9640 B=0.01410, que deixaria residuos de +1/-5/+4 cm. NAO ativar com 3 pontos: calibrar com trena em 5-7 distancias (ver ../tools/calibrate_depth_scale.py) antes de confiar."
+  },
+
   "bola": {
     "hsv": [35, 50, 50, 85, 255, 255],
     "faixa_altura_m": [0.60, 2.10],

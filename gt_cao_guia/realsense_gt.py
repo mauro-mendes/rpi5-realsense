@@ -146,6 +146,19 @@ def solve_marker_pose(corners, L, K, D):
     return (rvec.reshape(3), tvec.reshape(3)) if ok else None
 
 
+def corrige_depth(d, A, B):
+    """Corrige a profundidade da RealSense: d_real = d * (A + B*d).
+
+    A D435 le CURTO e o erro CRESCE com a distancia. Medido neste cenario encostando a bola
+    em marcos de posicao conhecida: erro 0 cm a 2,74 m (ID 0), 21 cm a 4,43 m (ID 4) e
+    16 cm a 4,88 m (ID 5) - quase tudo apontando para a camera, ou seja, radial = depth.
+
+    A=1, B=0 desliga (default). Mesmo modelo afim que ja usamos no rpi5-realsense
+    (tools/calibrate_depth_scale.py), calibrado com trena.
+    """
+    return d * (A + B * d)
+
+
 def le_gravidade(frames):
     """Direcao do 'para cima' em coordenadas da CAMERA, medida pelo acelerometro da D435i.
 
@@ -408,6 +421,9 @@ def main():
     ap.add_argument("--cenario", default=None,
                     help="caminho do cenario.json. Default: ao lado deste script. Util quando "
                          "o script foi COPIADO p/ outra pasta e o cenario ficou no repo.")
+    ap.add_argument("--depth-a", type=float, default=1.0,
+                    help="correcao do depth: d_real = d*(A + B*d). A=1,B=0 desliga.")
+    ap.add_argument("--depth-b", type=float, default=0.0)
     ap.add_argument("--multi-max-erro", type=float, default=0.40,
                     help="rejeita o solve multi se a camera cair mais que isso (m) da trena. Com 3 marcadores nao ha redundancia: esta e a UNICA trava de sanidade.")
     ap.add_argument("--sem-multi", action="store_true",
@@ -497,6 +513,9 @@ def main():
             padroes["hsv"] = ",".join(str(int(v)) for v in b["hsv"])
         if b.get("faixa_altura_m"):
             padroes["ball_range"] = [float(x) for x in b["faixa_altura_m"]]
+        dp = cen.get("depth", {})
+        if dp.get("A") is not None:
+            padroes.update(depth_a=float(dp["A"]), depth_b=float(dp.get("B", 0.0)))
         cap = cen.get("captura", {})
         if cap.get("alvo"):
             padroes["track"] = cap["alvo"]
@@ -624,7 +643,8 @@ def main():
                        "hsv": a.hsv, "conf": a.conf, "gate_m": a.gate_m,
                        "max_speed": a.max_speed, "min_hits": a.min_hits, "rate_hz": a.rate,
                        "ball_height_m": a.ball_height, "ball_range_m": list(a.ball_range),
-                       "cam_height_m": a.cam_height, "cam_dist_m": a.cam_dist},
+                       "cam_height_m": a.cam_height, "cam_dist_m": a.cam_dist,
+                       "depth_A": a.depth_a, "depth_B": a.depth_b},
             "bag": a.bag,
         })
         # A altura da bola sai MEDIDA da propria passada - ninguem precisa ir de trena em
@@ -939,6 +959,12 @@ def main():
                                         R_wc, t_wc = _mp["R_recinto_from_cam"], _mp["tvec"]
                                         cam_pos = _mp["cam_pos"]
                                         mundo, yaw_rec = "recinto", 0.0
+                                        # rvec/tvec TEM que ser os do solve que foi USADO.
+                                        # Antes ficavam os do solve de 1 marcador enquanto a
+                                        # matriz vinha do multi -> o meta.json ficava
+                                        # inconsistente (-R^T@tvec dava 2,1 m fora do
+                                        # cam_pos) e quem reprocessasse o CSV erraria feio.
+                                        rv, tv = _mp["rvec"], _mp["tvec"]
                                         print("     -> ACEITO. mundo = RECINTO (sem passar pelo "
                                               "frame do marcador).")
                                         lock_info.update(
@@ -971,8 +997,13 @@ def main():
                                 "vertical_fonte": up_src, "tilt_camera_deg": tilt,
                                 "grav_amostras": len(grav),
                                 "yaw_recinto_deg": yaw_rec,
-                                "rvec": rv.tolist(), "tvec": tv.tolist(),
-                                "R_marker_from_cam": R_wc.tolist(),
+                                # POSE EFETIVAMENTE USADA (multi ou 1 marcador). O nome do
+                                # frame vem em world_frame: com o multi, o "mundo" e o
+                                # RECINTO; com 1 marcador, e o MARCADOR de referencia.
+                                "rvec": np.asarray(rv).tolist(),
+                                "tvec": np.asarray(tv).tolist(),
+                                "R_mundo_from_cam": R_wc.tolist(),
+                                "R_marker_from_cam": R_wc.tolist(),   # nome antigo, compat
                                 "cam_pos_in_marker": cam_pos.tolist(),
                                 "cam_dist_horizontal_m": d_h, "leveled": leveled,
                                 "tilt_before_level_deg": float(ang),
@@ -997,6 +1028,7 @@ def main():
                         dm = depth_median_patch(depth_f, bx, by, W, H)
                         if dm is not None:
                             d, npx, std = dm
+                            d = corrige_depth(d, a.depth_a, a.depth_b)
                             p_cam = np.array(rs.rs2_deproject_pixel_to_point(
                                 intr, [float(bx), float(by)], d))
                             wpt = to_world(p_cam)
@@ -1032,6 +1064,7 @@ def main():
                             if pp is None:
                                 continue
                             u, vv, d, npx, std = pp
+                            d = corrige_depth(d, a.depth_a, a.depth_b)
                             p_cam = np.array(rs.rs2_deproject_pixel_to_point(intr, [u, vv], d))
                             dets.append(to_world(p_cam))
                             meta_d.append(dict(p_cam=p_cam, u=u, v=vv, d=d, npx=npx, std=std,
