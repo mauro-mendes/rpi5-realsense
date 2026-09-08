@@ -9,14 +9,14 @@
   ],
   "recinto": {
     "largura_m": 2.3,
-    "profundidade_m": 3.575,
+    "profundidade_m": 3.452,
     "divisoria": {
       "y_m": 0.9,
       "x0_m": 0.81,
       "x1_m": 2.16,
       "_nota": "presa a parede DIREITA, deixa passagem de 0,81 m junto a ESQUERDA. Baixa - nao bloqueia a visada."
     },
-    "_nota_dim": "2.30 x 3.575 vem do mapa do LiDAR (mapa260825.pgm, 0.025 m/px). O croqui a mao dizia 2.16 x 3.50 - por isso o x do ID 0, que foi DERIVADO da largura, estava 14 cm errado."
+    "_nota_dim": "largura 2.30 do mapa LiDAR; profundidade 3.452 vem das TRENAS entre marcadores (ID5->ID7=1,63 e ID4->ID8=3,00), nao do mapa - o LiDAR dava 3.575, 12 cm a mais. Licao: numero derivado de mapa/croqui e suspeito; medida entre marcadores nao."
   },
   "marcadores": {
     "0": {
@@ -59,19 +59,19 @@
       "tipo": "parede",
       "normal": "-y",
       "x_m": 0.165,
-      "y_m": 3.575,
+      "y_m": 3.452,
       "z_m": 1.28,
       "tamanho_m": 0.135,
-      "_nota": "parede do FUNDO, 16,5 cm do canto (contando a viga). y_m PROVISORIO: veio do mapa LiDAR (3.575), nao de medida direta."
+      "_nota": "parede do FUNDO, 16,5 cm do canto. y RESOLVIDO da trena: ID5->ID7 = 1,63 m (medido 08/09) -> y=3.452. CONFERIDO com a medida independente ID4->ID8 = 3,00 m, que da 2,985 calculado (1,5 cm). Antes estava 3.575, lido do mapa LiDAR - 12 cm errado, e era a causa do residuo de 2,83 px."
     },
     "8": {
       "tipo": "parede",
       "normal": "-y",
       "x_m": 1.03,
-      "y_m": 3.575,
+      "y_m": 3.452,
       "z_m": 1.28,
       "tamanho_m": 0.135,
-      "_nota": "parede do FUNDO, 86,5 cm depois do ID 7. y_m PROVISORIO (mesmo caso do ID 7)."
+      "_nota": "parede do FUNDO, 86,5 cm depois do ID 7, mesmo plano. y=3.452 pelo mesmo ajuste do ID 7."
     }
   },
   "camera": {
