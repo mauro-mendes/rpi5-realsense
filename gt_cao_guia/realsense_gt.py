@@ -651,17 +651,32 @@ def main():
         elif yaw_rec is None:
             print("  [PLANO] nao gerado: o yaw nao foi deduzido no travamento "
                   "(procure a linha '[cenario] yaw do marcador' no arranque)")
-        elif not zb:
-            print("  [PLANO] nao gerado: nenhuma amostra de BOLA nesta passada")
         else:
             try:
-                Pm = np.array([[float(r["x_world"]), float(r["y_world"])]
-                               for r in rows if r["target"] == "ball"], float)
-                ts_b = np.array([float(r["t_s"]) for r in rows if r["target"] == "ball"], float)
-                png = CEN.plota_plano(Pm, ts_b, yaw_rec, cen, base + "_plano.png",
-                                      titulo=f"{a.prefix} passada {trial_n}  "
-                                             f"({len(Pm)} pts, {ts_b[-1]:.0f} s)")
-                print(f"  [PLANO] {png}")
+                # DESENHA OS DOIS ALVOS. A bola e a referencia (centroide rigido); a pessoa
+                # vem por cima p/ dar a comparacao dos metodos na MESMA passada - que e o
+                # motivo de rastrear os dois juntos.
+                series = {}
+                for alvo in ("ball", "person"):
+                    sel = [r for r in rows if r["target"] == alvo]
+                    if len(sel) >= 2:
+                        series[alvo] = (
+                            np.array([[float(r["x_world"]), float(r["y_world"])] for r in sel], float),
+                            np.array([float(r["t_s"]) for r in sel], float))
+                if not series:
+                    print("  [PLANO] nao gerado: nenhuma amostra de bola nem de pessoa")
+                else:
+                    n = " + ".join("%d %s" % (len(v[0]), k) for k, v in series.items())
+                    dur = max(v[1][-1] for v in series.values())
+                    png = CEN.plota_plano(series, yaw_rec, cen, base + "_plano.png",
+                                          titulo=f"{a.prefix} passada {trial_n}  ({n}, {dur:.0f} s)")
+                    print(f"  [PLANO] {png}")
+                    cmp_ = CEN.compara_series({k: (CEN.para_recinto(v[0], yaw_rec, cen), v[1])
+                                               for k, v in series.items()})
+                    if cmp_:
+                        print("  [COMPARA] bola x pessoa: mediana %.0f cm | p90 %.0f cm | "
+                              "max %.0f cm (n=%d)" % (100*cmp_["mediana"], 100*cmp_["p90"],
+                                                      100*cmp_["maximo"], cmp_["n"]))
             except Exception as e:
                 print(f"  [PLANO] falhou (CSV esta salvo): {e}")
         rows = []

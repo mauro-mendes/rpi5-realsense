@@ -116,15 +116,16 @@ def _cor_tempo(f):
     return "#f0f921"
 
 
-def plota_plano_svg(P_rec, tempos, cen, out_svg, titulo=""):
+def plota_plano_svg(rec_, cen, out_svg, titulo="", cmp_=None):
     """Planta em SVG, SEM NENHUMA DEPENDENCIA (nem matplotlib). Abre em qualquer navegador.
     Existe porque o ambiente do laboratorio pode nao ter matplotlib - e a planta e o
     principal retorno visual de cada passada, nao pode depender de uma lib extra."""
     rec = cen.get("recinto", {})
     Wr = float(rec.get("largura_m", 2.16)); Lr = float(rec.get("profundidade_m", 3.50))
     c = cen.get("camera") or {}
-    xs = [0.0, Wr] + ([c["x_m"]] if c else []) + list(P_rec[:, 0] if len(P_rec) else [])
-    ys = [0.0, Lr] + ([c["y_m"]] if c else []) + list(P_rec[:, 1] if len(P_rec) else [])
+    todos = np.vstack([P for P, _ in rec_.values() if len(P)]) if rec_ else np.zeros((0, 2))
+    xs = [0.0, Wr] + ([c["x_m"]] if c else []) + list(todos[:, 0])
+    ys = [0.0, Lr] + ([c["y_m"]] if c else []) + list(todos[:, 1])
     x0, x1 = min(xs) - 0.35, max(xs) + 0.35
     y0, y1 = min(ys) - 0.35, max(ys) + 0.35
     ESC = 190.0                                   # px por metro
@@ -161,40 +162,80 @@ def plota_plano_svg(P_rec, tempos, cen, out_svg, titulo=""):
                  'stroke-width="2"/>' % (X(c["x_m"]), Y(c["y_m"])))
         o.append('<text x="%.1f" y="%.1f" font-family="sans-serif" font-size="12" '
                  'font-weight="bold">camera</text>' % (X(c["x_m"])-22, Y(c["y_m"])+26))
-    n = len(P_rec)
-    if n > 1:
-        t0, t1 = float(tempos[0]), float(tempos[-1])
-        rng = (t1 - t0) or 1.0
-        for i in range(n - 1):
+    Pb, tb = rec_.get("ball", (np.zeros((0, 2)), np.zeros(0)))
+    if len(Pb) > 1:                                # BOLA colorida por tempo
+        t0, t1 = float(tb[0]), float(tb[-1]); rng = (t1 - t0) or 1.0
+        for i in range(len(Pb) - 1):
             o.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" '
                      'stroke-width="3.2" stroke-linecap="round"/>'
-                     % (X(P_rec[i,0]), Y(P_rec[i,1]), X(P_rec[i+1,0]), Y(P_rec[i+1,1]),
-                        _cor_tempo((float(tempos[i]) - t0) / rng)))
+                     % (X(Pb[i,0]), Y(Pb[i,1]), X(Pb[i+1,0]), Y(Pb[i+1,1]),
+                        _cor_tempo((float(tb[i]) - t0) / rng)))
         o.append('<circle cx="%.1f" cy="%.1f" r="8" fill="#1b5e20"/>'
-                 % (X(P_rec[0,0]), Y(P_rec[0,1])))
+                 % (X(Pb[0,0]), Y(Pb[0,1])))
         o.append('<circle cx="%.1f" cy="%.1f" r="8" fill="#b71c1c"/>'
-                 % (X(P_rec[-1,0]), Y(P_rec[-1,1])))
-        o.append('<text x="10" y="%.0f" font-family="sans-serif" font-size="12">'
-                 'verde = inicio  ·  vermelho = fim  ·  cor = tempo (%.0f s)</text>'
-                 % (Hpx - 8, t1 - t0))
+                 % (X(Pb[-1,0]), Y(Pb[-1,1])))
+    Pp, _ = rec_.get("person", (np.zeros((0, 2)), np.zeros(0)))
+    if len(Pp) > 1:                                # PESSOA em ciano, por cima
+        pts = " ".join("%.1f,%.1f" % (X(p[0]), Y(p[1])) for p in Pp)
+        o.append('<polyline points="%s" fill="none" stroke="#00838f" stroke-width="2.4" '
+                 'stroke-linejoin="round"/>' % pts)
+        for p in Pp:
+            o.append('<circle cx="%.1f" cy="%.1f" r="2.6" fill="#00838f"/>'
+                     % (X(p[0]), Y(p[1])))
+    leg = "verde = inicio  ·  vermelho = fim  ·  cor = tempo (bola)"
+    if len(Pp) > 1:
+        leg += "  ·  ciano = pessoa (YOLO bbox)"
+    if cmp_:
+        leg += "  ·  bola x pessoa: mediana %.0f cm, p90 %.0f cm" % (
+            100*cmp_["mediana"], 100*cmp_["p90"])
+    o.append('<text x="10" y="%.0f" font-family="sans-serif" font-size="12">%s</text>'
+             % (Hpx - 8, leg))
     o.append("</svg>")
     with open(out_svg, "w", encoding="utf-8") as f:
         f.write(chr(10).join(o))
     return out_svg
 
 
-def plota_plano(P_marcador, tempos, yaw_deg, cen, out_png, titulo=""):
-    """Planta do recinto com a trajetoria por cima. P_marcador = pontos no frame do
-    marcador; a conversao p/ o recinto acontece aqui."""
-    P_rec_ = para_recinto(P_marcador, yaw_deg, cen)
+def compara_series(series_rec):
+    """Distancia entre a BOLA e a PESSOA nos instantes coincidentes. E a metrica que
+    justifica rastrear os dois na mesma passada: a bola (centroide rigido) e a regua com
+    que se mede o erro do metodo do bbox."""
+    b, p = series_rec.get("ball"), series_rec.get("person")
+    if not b or not p or len(b[0]) < 3 or len(p[0]) < 3:
+        return None
+    Pb, tb = b; Pp, tp = p
+    d = [float(np.linalg.norm(Pp[i] - Pb[int(np.argmin(np.abs(tb - tp[i])))]))
+         for i in range(len(tp)) if abs(tb - tp[i]).min() < 0.15]
+    if len(d) < 3:
+        return None
+    d = np.array(d)
+    return dict(n=len(d), mediana=float(np.median(d)), p90=float(np.percentile(d, 90)),
+                maximo=float(d.max()))
+
+
+def plota_plano(series, yaw_deg, cen, out_png, titulo=""):
+    """Planta do recinto com as trajetorias por cima.
+
+    `series` = {"ball": (P_marcador, tempos), "person": (...)}. A BOLA sai colorida por
+    tempo (e a referencia confiavel); a PESSOA sai em linha ciano por cima, para dar p/
+    comparar os dois metodos na MESMA passada - que e o motivo de rastrear os dois.
+    """
+    if isinstance(series, dict):
+        rec_ = {k: (para_recinto(P, yaw_deg, cen), np.asarray(t, float))
+                for k, (P, t) in series.items() if len(P)}
+    else:                                     # compat: chamada antiga (so um array)
+        rec_ = {"ball": (para_recinto(series, yaw_deg, cen), np.asarray(yaw_deg, float))}
+    if not rec_:
+        raise ValueError("nenhuma serie com pontos")
+    cmp_ = compara_series(rec_)
     try:
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         from matplotlib.patches import Rectangle
     except ImportError:                       # ambiente sem matplotlib -> SVG puro
-        return plota_plano_svg(P_rec_, tempos, cen,
-                               os.path.splitext(out_png)[0] + ".svg", titulo)
+        return plota_plano_svg(rec_, cen, os.path.splitext(out_png)[0] + ".svg",
+                               titulo, cmp_)
 
     rec = cen.get("recinto", {})
     Wr = float(rec.get("largura_m", 2.16))
@@ -230,14 +271,24 @@ def plota_plano(P_marcador, tempos, yaw_deg, cen, out_png, titulo=""):
         ax.annotate("camera", (c["x_m"], c["y_m"] - 0.26), fontsize=7.5, ha="center",
                     weight="bold")
 
-    P = P_rec_
-    if len(P) > 1:
-        sc = ax.scatter(P[:, 0], P[:, 1], c=tempos, cmap="plasma", s=9, zorder=9)
+    if "ball" in rec_:                        # BOLA: referencia, colorida por tempo
+        P, tt = rec_["ball"]
+        sc = ax.scatter(P[:, 0], P[:, 1], c=tt, cmap="plasma", s=9, zorder=9,
+                        label="bola (referencia)")
         ax.plot(P[:, 0], P[:, 1], lw=0.5, color="green", alpha=0.5, zorder=8)
-        plt.colorbar(sc, ax=ax, label="t (s)", shrink=0.55)
+        plt.colorbar(sc, ax=ax, label="t (s)  ·  bola", shrink=0.55)
         ax.plot(P[0, 0], P[0, 1], "o", color="#1b5e20", ms=11, zorder=10, label="inicio")
         ax.plot(P[-1, 0], P[-1, 1], "o", color="#b71c1c", ms=11, zorder=10, label="fim")
-        ax.legend(loc="upper right", fontsize=8)
+    if "person" in rec_:                      # PESSOA: por cima, p/ comparar
+        P, _ = rec_["person"]
+        ax.plot(P[:, 0], P[:, 1], "-o", lw=1.0, ms=3.2, color="#00838f", alpha=0.85,
+                zorder=9, label="pessoa (YOLO bbox)")
+    ax.legend(loc="upper right", fontsize=8)
+    if cmp_:
+        ax.annotate("bola x pessoa: mediana %.0f cm  ·  p90 %.0f cm  (n=%d)"
+                    % (100*cmp_["mediana"], 100*cmp_["p90"], cmp_["n"]),
+                    (0.02, 0.015), xycoords="axes fraction", fontsize=8.5,
+                    color="#00838f", weight="bold")
 
     lo = min(0.0, (c or {}).get("x_m", 0.0)) - 0.4
     hi = max(Wr, (c or {}).get("x_m", Wr)) + 0.4
