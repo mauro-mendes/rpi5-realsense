@@ -661,28 +661,45 @@ def main():
                 # DESENHA OS DOIS ALVOS. A bola e a referencia (centroide rigido); a pessoa
                 # vem por cima p/ dar a comparacao dos metodos na MESMA passada - que e o
                 # motivo de rastrear os dois juntos.
+                # UM SEGMENTO POR track_id. Juntar tracks diferentes numa polilinha so
+                # desenhava um leque de linhas que nunca existiram (teste de 08/09: o YOLO
+                # via 2 pessoas ao mesmo tempo e a figura ligava uma na outra).
                 series = {}
                 for alvo in ("ball", "person"):
-                    sel = [r for r in rows if r["target"] == alvo]
-                    if len(sel) >= 2:
-                        series[alvo] = (
-                            np.array([[float(r["x_world"]), float(r["y_world"])] for r in sel], float),
-                            np.array([float(r["t_s"]) for r in sel], float))
+                    segs = []
+                    for tid in sorted({r["track_id"] for r in rows if r["target"] == alvo},
+                                      key=lambda z: int(z)):
+                        sel = [r for r in rows
+                               if r["target"] == alvo and r["track_id"] == tid]
+                        if len(sel) >= 2:
+                            segs.append((
+                                np.array([[float(r["x_world"]), float(r["y_world"])]
+                                          for r in sel], float),
+                                np.array([float(r["t_s"]) for r in sel], float)))
+                    if segs:
+                        series[alvo] = segs
                 if not series:
                     print("  [PLANO] nao gerado: nenhuma amostra de bola nem de pessoa")
                 else:
-                    n = " + ".join("%d %s" % (len(v[0]), k) for k, v in series.items())
-                    dur = max(v[1][-1] for v in series.values())
+                    n = " + ".join("%d %s(%d tr)" % (sum(len(P) for P, _ in v), k, len(v))
+                                   for k, v in series.items())
+                    dur = max(t[-1] for v in series.values() for _, t in v)
                     png = CEN.plota_plano(series, yaw_rec, cen, base + "_plano.png",
                                           titulo=f"{a.prefix} passada {trial_n}  ({n}, {dur:.0f} s)",
                                           mundo=mundo)
                     print(f"  [PLANO] {png}")
-                    cmp_ = CEN.compara_series({k: (CEN.para_recinto(v[0], yaw_rec, cen, mundo), v[1])
-                                               for k, v in series.items()})
+                    cmp_ = CEN.compara_series(
+                        {k: [(CEN.para_recinto(P, yaw_rec, cen, mundo), t) for P, t in v]
+                         for k, v in series.items()})
                     if cmp_:
-                        print("  [COMPARA] bola x pessoa: mediana %.0f cm | p90 %.0f cm | "
-                              "max %.0f cm (n=%d)" % (100*cmp_["mediana"], 100*cmp_["p90"],
-                                                      100*cmp_["maximo"], cmp_["n"]))
+                        print("  [COMPARA] bola x pessoa MAIS PROXIMA: mediana %.0f cm | "
+                              "p90 %.0f cm | max %.0f cm (n=%d)"
+                              % (100*cmp_["mediana"], 100*cmp_["p90"],
+                                 100*cmp_["maximo"], cmp_["n"]))
+                        if cmp_["n_estaticos"]:
+                            print("            (%d de %d tracks de pessoa sao ESTATICOS "
+                                  "- operador parado? movel? - e foram excluidos)"
+                                  % (cmp_["n_estaticos"], cmp_["n_tracks"]))
             except Exception as e:
                 print(f"  [PLANO] falhou (CSV esta salvo): {e}")
         rows = []

@@ -243,8 +243,7 @@ def plota_plano_svg(rec_, cen, out_svg, titulo="", cmp_=None):
                  'stroke-width="2"/>' % (X(c["x_m"]), Y(c["y_m"])))
         o.append('<text x="%.1f" y="%.1f" font-family="sans-serif" font-size="12" '
                  'font-weight="bold">camera</text>' % (X(c["x_m"])-22, Y(c["y_m"])+26))
-    Pb, tb = rec_.get("ball", (np.zeros((0, 2)), np.zeros(0)))
-    if len(Pb) > 1:                                # BOLA colorida por tempo
+    for Pb, tb in rec_.get("ball", []):            # BOLA colorida por tempo
         t0, t1 = float(tb[0]), float(tb[-1]); rng = (t1 - t0) or 1.0
         for i in range(len(Pb) - 1):
             o.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" '
@@ -255,8 +254,13 @@ def plota_plano_svg(rec_, cen, out_svg, titulo="", cmp_=None):
                  % (X(Pb[0,0]), Y(Pb[0,1])))
         o.append('<circle cx="%.1f" cy="%.1f" r="8" fill="#b71c1c"/>'
                  % (X(Pb[-1,0]), Y(Pb[-1,1])))
-    Pp, _ = rec_.get("person", (np.zeros((0, 2)), np.zeros(0)))
-    if len(Pp) > 1:                                # PESSOA em ciano, por cima
+    n_pes = 0
+    for Pp, _ in rec_.get("person", []):           # CADA track na sua linha
+        if track_estatico(Pp):
+            o.append('<text x="%.1f" y="%.1f" font-size="20" fill="#8d6e63">X</text>'
+                     % (X(Pp[:, 0].mean()) - 6, Y(Pp[:, 1].mean()) + 7))
+            continue
+        n_pes += 1
         pts = " ".join("%.1f,%.1f" % (X(p[0]), Y(p[1])) for p in Pp)
         o.append('<polyline points="%s" fill="none" stroke="#00838f" stroke-width="2.4" '
                  'stroke-linejoin="round"/>' % pts)
@@ -264,7 +268,7 @@ def plota_plano_svg(rec_, cen, out_svg, titulo="", cmp_=None):
             o.append('<circle cx="%.1f" cy="%.1f" r="2.6" fill="#00838f"/>'
                      % (X(p[0]), Y(p[1])))
     leg = "verde = inicio  ·  vermelho = fim  ·  cor = tempo (bola)"
-    if len(Pp) > 1:
+    if n_pes:
         leg += "  ·  ciano = pessoa (YOLO bbox)"
     if cmp_:
         leg += "  ·  bola x pessoa: mediana %.0f cm, p90 %.0f cm" % (
@@ -277,21 +281,46 @@ def plota_plano_svg(rec_, cen, out_svg, titulo="", cmp_=None):
     return out_svg
 
 
+def track_estatico(P, limite=0.30):
+    """True se o track praticamente nao anda na vida toda. Um YOLO parado em cima de um
+    movel, ou do operador em pe ao lado da camera, vira um 'person' perfeitamente estavel
+    e polui tudo - foi o que aconteceu no teste de 08/09 (track 8: 249 amostras em 28 s
+    sem sair do lugar, fora do recinto)."""
+    P = np.asarray(P, float)
+    return len(P) < 2 or float(np.ptp(P[:, 0])) + float(np.ptp(P[:, 1])) < limite
+
+
 def compara_series(series_rec):
-    """Distancia entre a BOLA e a PESSOA nos instantes coincidentes. E a metrica que
-    justifica rastrear os dois na mesma passada: a bola (centroide rigido) e a regua com
-    que se mede o erro do metodo do bbox."""
-    b, p = series_rec.get("ball"), series_rec.get("person")
-    if not b or not p or len(b[0]) < 3 or len(p[0]) < 3:
+    """Distancia da BOLA ate a PESSOA MAIS PROXIMA em cada instante.
+
+    'Mais proxima', e nao 'a primeira do instante', porque o YOLO frequentemente ve mais de
+    uma pessoa (operador ao lado da camera, falso-positivo em movel). Comparar contra a
+    primeira dava 180 cm de mediana no teste de 08/09; contra a mais proxima da 40 cm - a
+    diferenca era so o falso-positivo estatico entrando na conta.
+
+    `series_rec` = {nome: [(P, t), ...]} - varios segmentos por alvo (a pessoa fragmenta).
+    """
+    b = series_rec.get("ball") or []
+    p = series_rec.get("person") or []
+    if not b or not p:
         return None
-    Pb, tb = b; Pp, tp = p
-    d = [float(np.linalg.norm(Pp[i] - Pb[int(np.argmin(np.abs(tb - tp[i])))]))
-         for i in range(len(tp)) if abs(tb - tp[i]).min() < 0.15]
+    Pb = np.vstack([s[0] for s in b]); tb = np.concatenate([s[1] for s in b])
+    moveis = [s for s in p if not track_estatico(s[0])]
+    usados = moveis if moveis else p
+    Pp = np.vstack([s[0] for s in usados]); tp = np.concatenate([s[1] for s in usados])
+    if len(Pb) < 3 or len(Pp) < 3:
+        return None
+    d = []
+    for i in range(len(tb)):
+        m = np.abs(tp - tb[i]) < 0.15
+        if m.any():
+            d.append(float(np.linalg.norm(Pp[m] - Pb[i], axis=1).min()))
     if len(d) < 3:
         return None
     d = np.array(d)
     return dict(n=len(d), mediana=float(np.median(d)), p90=float(np.percentile(d, 90)),
-                maximo=float(d.max()))
+                maximo=float(d.max()), n_tracks=len(p),
+                n_estaticos=len(p) - len(moveis))
 
 
 def plota_plano(series, yaw_deg, cen, out_png, titulo="", mundo="marcador"):
@@ -301,11 +330,13 @@ def plota_plano(series, yaw_deg, cen, out_png, titulo="", mundo="marcador"):
     tempo (e a referencia confiavel); a PESSOA sai em linha ciano por cima, para dar p/
     comparar os dois metodos na MESMA passada - que e o motivo de rastrear os dois.
     """
-    if isinstance(series, dict):
-        rec_ = {k: (para_recinto(P, yaw_deg, cen, mundo), np.asarray(t, float))
-                for k, (P, t) in series.items() if len(P)}
-    else:                                     # compat: chamada antiga (so um array)
-        rec_ = {"ball": (para_recinto(series, yaw_deg, cen), np.asarray(yaw_deg, float))}
+    # series = {nome: [(P, t), ...]} - VARIOS segmentos por alvo. A pessoa fragmenta em
+    # varios track_id e ligar tudo numa polilinha unica desenha um leque de linhas falsas
+    # entre tracks diferentes (foi o que aconteceu no teste de 08/09).
+    rec_ = {k: [(para_recinto(P, yaw_deg, cen, mundo), np.asarray(t, float))
+                for P, t in segs if len(P)]
+            for k, segs in series.items()}
+    rec_ = {k: v for k, v in rec_.items() if v}
     if not rec_:
         raise ValueError("nenhuma serie com pontos")
     cmp_ = compara_series(rec_)
@@ -352,18 +383,26 @@ def plota_plano(series, yaw_deg, cen, out_png, titulo="", mundo="marcador"):
         ax.annotate("camera", (c["x_m"], c["y_m"] - 0.26), fontsize=7.5, ha="center",
                     weight="bold")
 
-    if "ball" in rec_:                        # BOLA: referencia, colorida por tempo
-        P, tt = rec_["ball"]
+    for i, (P, tt) in enumerate(rec_.get("ball", [])):     # BOLA: colorida por tempo
         sc = ax.scatter(P[:, 0], P[:, 1], c=tt, cmap="plasma", s=9, zorder=9,
-                        label="bola (referencia)")
+                        label="bola (referencia)" if i == 0 else None)
         ax.plot(P[:, 0], P[:, 1], lw=0.5, color="green", alpha=0.5, zorder=8)
-        plt.colorbar(sc, ax=ax, label="t (s)  ·  bola", shrink=0.55)
-        ax.plot(P[0, 0], P[0, 1], "o", color="#1b5e20", ms=11, zorder=10, label="inicio")
-        ax.plot(P[-1, 0], P[-1, 1], "o", color="#b71c1c", ms=11, zorder=10, label="fim")
-    if "person" in rec_:                      # PESSOA: por cima, p/ comparar
-        P, _ = rec_["person"]
-        ax.plot(P[:, 0], P[:, 1], "-o", lw=1.0, ms=3.2, color="#00838f", alpha=0.85,
-                zorder=9, label="pessoa (YOLO bbox)")
+        if i == 0:
+            plt.colorbar(sc, ax=ax, label="t (s)  ·  bola", shrink=0.55)
+            ax.plot(P[0, 0], P[0, 1], "o", color="#1b5e20", ms=11, zorder=10, label="inicio")
+            ax.plot(P[-1, 0], P[-1, 1], "o", color="#b71c1c", ms=11, zorder=10, label="fim")
+    # PESSOA: CADA track_id na sua propria linha. Ligar tracks diferentes desenhava um
+    # leque de linhas que nunca existiram.
+    n_mov = 0
+    for P, _ in rec_.get("person", []):
+        if track_estatico(P):                 # operador parado, movel: marca e nao liga
+            ax.plot(P[:, 0].mean(), P[:, 1].mean(), "X", ms=13, color="#8d6e63",
+                    mec="k", mew=1.2, zorder=10,
+                    label="falso-positivo estatico" if n_mov == 0 else None)
+        else:
+            ax.plot(P[:, 0], P[:, 1], "-o", lw=1.0, ms=3.2, color="#00838f", alpha=0.85,
+                    zorder=9, label="pessoa (YOLO bbox)" if n_mov == 0 else None)
+            n_mov += 1
     ax.legend(loc="upper right", fontsize=8)
     if cmp_:
         ax.annotate("bola x pessoa: mediana %.0f cm  ·  p90 %.0f cm  (n=%d)"
