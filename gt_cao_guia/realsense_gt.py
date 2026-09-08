@@ -802,6 +802,37 @@ def main():
                                     if yw["erro_escala_m"] > 0.15:
                                         print("            *** os modulos discordam -> "
                                               "conferir --marker-size e as medidas do cenario")
+                            # MEDE O ERRO DA POSE LONGE DA ORIGEM. Projeta os OUTROS
+                            # marcadores do cenario com a pose travada e compara com onde
+                            # eles estao de fato. Erro de ROTACAO e ~zero no marcador de
+                            # referencia e cresce com a distancia - so isto revela, e sem
+                            # depender de caminho desenhado a mao.
+                            if cen and ids is not None and depth_f and yaw_rec is not None:
+                                _ms = cen.get("marcadores") or {}
+                                _outros = [(k, mm) for k, mm in enumerate(ids.flatten().tolist())
+                                           if str(mm) in _ms and mm != ref_id]
+                                if _outros:
+                                    print("  ERRO DA POSE nos outros marcadores:")
+                                    _mr = _ms[str(ref_id)]
+                                    for _k, _mid in _outros:
+                                        _c = corners[_k][0].mean(axis=0)
+                                        _dm = depth_median_patch(depth_f, int(_c[0]), int(_c[1]), W, H)
+                                        if _dm is None:
+                                            print("    ID %-3d sem profundidade valida" % _mid)
+                                            continue
+                                        _pc = np.array(rs.rs2_deproject_pixel_to_point(
+                                            intr, [float(_c[0]), float(_c[1])], _dm[0]))
+                                        _pm = R_wc.T @ (_pc - t_wc)
+                                        _pr = CEN.para_recinto(_pm.reshape(1, 3), yaw_rec, cen)[0]
+                                        _e = _ms[str(_mid)]
+                                        _alvo = np.array([_e["x_m"], _e["y_m"]])
+                                        _d0 = float(np.hypot(_alvo[0] - _mr["x_m"], _alvo[1] - _mr["y_m"]))
+                                        _err = float(np.linalg.norm(_pr - _alvo))
+                                        print("    ID %-3d medido (%.2f,%.2f) esperado (%.2f,%.2f)"
+                                              "  ERRO %.0f cm  (%.2f m da origem = %.1f%%)"
+                                              % (_mid, _pr[0], _pr[1], _alvo[0], _alvo[1],
+                                                 100 * _err, _d0, 100 * _err / max(_d0, 0.01)))
+
                             # A camera CONSEGUE ver um marcador tao abaixo? Se a geometria
                             # do cenario exige mais inclinacao do que o IMU mediu, algo esta
                             # errado (foi assim que descobrimos que o --level antigo mentia).
