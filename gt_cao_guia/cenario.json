@@ -50,7 +50,8 @@
 
   "bola": {
     "hsv": [35, 50, 50, 85, 255, 255],
-    "faixa_altura_m": [1.40, 2.10]
+    "faixa_altura_m": [0.60, 2.10],
+    "_nota_faixa": "Cobre a bola no CAPACETE (~1,5-1,9 m) e na MAO (~0,7-1,0 m). E so uma rede grossa contra bola errada; a escala quem confere e --cam-height."
   },
 
   "captura": {

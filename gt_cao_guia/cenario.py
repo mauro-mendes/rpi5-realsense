@@ -91,14 +91,95 @@ def yaw_do_marcador(cam_in_marker, cen):
     }
 
 
-def para_recinto(P, yaw_deg, cen):
-    """Pontos (N,2 ou N,3) do frame do MARCADOR -> frame do RECINTO."""
+def pose_multi(vistos, cen, K, D):
+    """Pose da camera DIRETO no referencial do RECINTO, usando VARIOS marcadores.
+
+    `vistos` = {id_int: (u, v)} dos CENTROS detectados em pixels (media dos 4 cantos).
+
+    Tres decisoes que vieram de medida, nao de gosto:
+
+    1. CENTROS EM PIXELS, nunca profundidade. O depth da RealSense le 3-7% CURTO sobre um
+       ArUco porque o marcador e quase todo preto e preto absorve o IR do projetor (medido:
+       -6,6% no ID 4, -3,4% no ID 5). Deprojetar o centro com depth injetaria esse erro
+       direto na pose.
+
+    2. A ESCALA vem das DISTANCIAS ENTRE marcadores (metros, medidas com trena), nao do lado
+       de um marcador de 13 cm. Um erro de 1 cm na trena vale 0,4%; o mesmo 1 cm no lado do
+       marcador valia 7% - que foi a origem do deslocamento de 60 cm.
+
+    3. SEMEADO com a camera do cenario.json. Com 3 pontos o PnP e ambiguo: sem semente ele
+       salta p/ solucao errada em ~10% dos casos (erro de 6 m). Com semente, some.
+
+    O centro e a media dos 4 cantos, entao independe de como o marcador esta girado no
+    proprio plano - nao preciso saber a orientacao de cada um.
+
+    Retorna dict com rvec/tvec (mundo=RECINTO), posicao da camera e o residuo, ou None.
+    """
+    import cv2
+    pts = pontos_dos_marcadores(cen)
+    ids = sorted(i for i in vistos if i in pts)
+    if len(ids) < 3:
+        return None
+    obj = np.array([pts[i] for i in ids], dtype=np.float64)
+    img = np.array([vistos[i] for i in ids], dtype=np.float64)
+
+    c = cen.get("camera") or {}
+    if not c:
+        return None
+    C0 = np.array([c["x_m"], c["y_m"], c["z_m"]], float)
+    f = obj.mean(axis=0) - C0
+    f /= np.linalg.norm(f)
+    r = np.cross(f, np.array([0.0, 0.0, 1.0]))
+    n = np.linalg.norm(r)
+    if n < 1e-6:
+        return None
+    r /= n
+    R0 = np.vstack([r, np.cross(f, r), f])          # semente: recinto -> camera
+    rv0, _ = cv2.Rodrigues(R0)
+    tv0 = (-R0 @ C0).reshape(3, 1)
+    ok, rv, tv = cv2.solvePnP(obj, img, K, D, rvec=rv0.copy(), tvec=tv0.copy(),
+                              useExtrinsicGuess=True, flags=cv2.SOLVEPNP_ITERATIVE)
+    if not ok:
+        return None
+    R, _ = cv2.Rodrigues(rv)
+    proj, _ = cv2.projectPoints(obj, rv, tv, K, D)
+    res = np.linalg.norm(proj.reshape(-1, 2) - img, axis=1)
+    return {
+        "ids": ids, "rvec": rv.ravel(), "tvec": tv.ravel(),
+        "R_recinto_from_cam": R,
+        "cam_pos": (-R.T @ tv.ravel()),
+        "residuo_px": {i: float(e) for i, e in zip(ids, res)},
+        "residuo_medio_px": float(res.mean()),
+        # ATENCAO: com EXATAMENTE 3 marcadores sao 6 equacoes p/ 6 incognitas - o sistema e
+        # exatamente determinado e o residuo da ~0 SEMPRE, mesmo com um marcador detectado
+        # 25 px fora (testado). Ou seja: o residuo NAO serve de controle de qualidade aqui.
+        # Quem acusa e a comparacao com a trena, que e informacao independente.
+        "redundante": len(ids) > 3,
+        "erro_vs_trena_m": float(np.linalg.norm((-R.T @ tv.ravel()) - C0)),
+    }
+
+
+def pontos_dos_marcadores(cen):
+    """{id: (x, y, z)} dos CENTROS dos marcadores no referencial do RECINTO."""
+    return {int(mid): np.array([m["x_m"], m["y_m"], float(m.get("z_m", 0.0))], float)
+            for mid, m in (cen.get("marcadores") or {}).items()}
+
+
+def para_recinto(P, yaw_deg, cen, mundo="marcador"):
+    """Pontos (N,2 ou N,3) -> frame do RECINTO.
+
+    mundo="marcador": o mundo e o ArUco de referencia (pose de 1 marcador) -> roda pelo yaw
+                      e translada p/ a posicao do marcador.
+    mundo="recinto" : o solve MULTI-marcador ja resolve direto no recinto -> nada a fazer.
+    """
+    P = np.asarray(P, float)
+    if mundo == "recinto":
+        return P[:, :2]
     rid, m = marcador_ref(cen)
     if m is None:
-        return np.asarray(P)[:, :2]
+        return P[:, :2]
     th = np.radians(yaw_deg)
     R = np.array([[np.cos(th), -np.sin(th)], [np.sin(th), np.cos(th)]])
-    P = np.asarray(P, float)
     return (R @ P[:, :2].T).T + np.array([m["x_m"], m["y_m"]])
 
 
@@ -213,7 +294,7 @@ def compara_series(series_rec):
                 maximo=float(d.max()))
 
 
-def plota_plano(series, yaw_deg, cen, out_png, titulo=""):
+def plota_plano(series, yaw_deg, cen, out_png, titulo="", mundo="marcador"):
     """Planta do recinto com as trajetorias por cima.
 
     `series` = {"ball": (P_marcador, tempos), "person": (...)}. A BOLA sai colorida por
@@ -221,7 +302,7 @@ def plota_plano(series, yaw_deg, cen, out_png, titulo=""):
     comparar os dois metodos na MESMA passada - que e o motivo de rastrear os dois.
     """
     if isinstance(series, dict):
-        rec_ = {k: (para_recinto(P, yaw_deg, cen), np.asarray(t, float))
+        rec_ = {k: (para_recinto(P, yaw_deg, cen, mundo), np.asarray(t, float))
                 for k, (P, t) in series.items() if len(P)}
     else:                                     # compat: chamada antiga (so um array)
         rec_ = {"ball": (para_recinto(series, yaw_deg, cen), np.asarray(yaw_deg, float))}

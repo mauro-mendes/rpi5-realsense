@@ -408,6 +408,10 @@ def main():
     ap.add_argument("--cenario", default=None,
                     help="caminho do cenario.json. Default: ao lado deste script. Util quando "
                          "o script foi COPIADO p/ outra pasta e o cenario ficou no repo.")
+    ap.add_argument("--multi-max-erro", type=float, default=0.40,
+                    help="rejeita o solve multi se a camera cair mais que isso (m) da trena. Com 3 marcadores nao ha redundancia: esta e a UNICA trava de sanidade.")
+    ap.add_argument("--sem-multi", action="store_true",
+                    help="nao usa o solve multi-marcador (fica na pose de 1 marcador)")
     ap.add_argument("--check", action="store_true",
                     help="so verifica o ambiente (versoes, modelo, camera) e sai")
     ap.add_argument("--track", choices=["ball", "person", "both"], default="both")
@@ -588,6 +592,7 @@ def main():
 
     locked, ref_id, samples, grav = False, a.ref_id, [], []
     yaw_rec = None            # rotacao marcador->recinto (deduzida no travamento)
+    mundo = "marcador"        # "recinto" quando o solve multi-marcador assume
     R_wc = t_wc = cam_pos = None
     lock_info = {}
     show_mask, rec, trial_n, frame_i = False, False, 0, 0
@@ -610,7 +615,7 @@ def main():
             w.writeheader(); w.writerows(rows)
         meta = dict(lock_info)
         meta.update({
-            "code_commit": git_commit(),
+            "code_commit": git_commit(), "world_frame": mundo,
             "trial": trial_n, "n_rows": len(rows), "wall_start": rows[0]["wall"],
             "wall_end": rows[-1]["wall"], "track_mode": a.track,
             "intrinsics": {"width": W, "height": H, "fx": intr.fx, "fy": intr.fy,
@@ -669,9 +674,10 @@ def main():
                     n = " + ".join("%d %s" % (len(v[0]), k) for k, v in series.items())
                     dur = max(v[1][-1] for v in series.values())
                     png = CEN.plota_plano(series, yaw_rec, cen, base + "_plano.png",
-                                          titulo=f"{a.prefix} passada {trial_n}  ({n}, {dur:.0f} s)")
+                                          titulo=f"{a.prefix} passada {trial_n}  ({n}, {dur:.0f} s)",
+                                          mundo=mundo)
                     print(f"  [PLANO] {png}")
-                    cmp_ = CEN.compara_series({k: (CEN.para_recinto(v[0], yaw_rec, cen), v[1])
+                    cmp_ = CEN.compara_series({k: (CEN.para_recinto(v[0], yaw_rec, cen, mundo), v[1])
                                                for k, v in series.items()})
                     if cmp_:
                         print("  [COMPARA] bola x pessoa: mediana %.0f cm | p90 %.0f cm | "
@@ -838,7 +844,7 @@ def main():
                                         _pc = np.array(rs.rs2_deproject_pixel_to_point(
                                             intr, [float(_c[0]), float(_c[1])], _dm[0]))
                                         _pm = R_wc.T @ (_pc - t_wc)
-                                        _pr = CEN.para_recinto(_pm.reshape(1, 3), yaw_rec, cen)[0]
+                                        _pr = CEN.para_recinto(_pm.reshape(1, 3), yaw_rec, cen, mundo)[0]
                                         _e = _ms[str(_mid)]
                                         _alvo = np.array([_e["x_m"], _e["y_m"]])
                                         _d0 = float(np.hypot(_alvo[0] - _mr["x_m"], _alvo[1] - _mr["y_m"]))
@@ -875,6 +881,57 @@ def main():
                                                   "-> %+.0f cm  (preto absorve IR; n_px=%d)"
                                                   % (_dm[0], _pc_true[2],
                                                      100 * (_dm[0] - _pc_true[2]), _dm[1]))
+
+                            # ---------- SOLVE MULTI-MARCADOR ----------
+                            # Com >=3 marcadores do cenario visiveis, resolve a pose DIRETO
+                            # no referencial do recinto usando os CENTROS EM PIXELS. Nao usa
+                            # profundidade (o depth le 3-7% curto sobre o preto do ArUco) e
+                            # a escala passa a vir das distancias entre marcadores, medidas
+                            # com trena (metros), em vez do lado de um marcador de 13 cm.
+                            if cen and not a.sem_multi and ids is not None:
+                                _pts = CEN.pontos_dos_marcadores(cen)
+                                _vis = {int(mm): tuple(corners[k][0].mean(axis=0))
+                                        for k, mm in enumerate(ids.flatten().tolist())
+                                        if int(mm) in _pts}
+                                _mp = CEN.pose_multi(_vis, cen, K, DIST) if len(_vis) >= 3 else None
+                                if _mp:
+                                    _et = _mp["erro_vs_trena_m"]
+                                    print("  [MULTI] pose por %d marcadores %s"
+                                          % (len(_mp["ids"]), _mp["ids"]))
+                                    print("     camera (%.3f, %.3f, %.3f)  vs trena "
+                                          "(%.3f, %.3f, %.3f)  -> %.0f cm"
+                                          % (*_mp["cam_pos"], cen["camera"]["x_m"],
+                                             cen["camera"]["y_m"], cen["camera"]["z_m"], 100*_et))
+                                    if not _mp["redundante"]:
+                                        # 3 marcadores = 6 eq p/ 6 incognitas: encaixa perfeito
+                                        # mesmo com um deles 25 px fora (testado). O residuo
+                                        # NAO acusa nada aqui - quem acusa e a trena.
+                                        print("     (3 marcadores: sem redundancia, o residuo de "
+                                              "reprojecao nao vale como controle - use a trena)")
+                                    else:
+                                        print("     residuo de reprojecao: %s (medio %.2f px)"
+                                              % (" ".join("ID%d %.1fpx" % (i, e) for i, e
+                                                          in _mp["residuo_px"].items()),
+                                                 _mp["residuo_medio_px"]))
+                                    if _et > a.multi_max_erro:
+                                        print("     *** REJEITADO: %.0f cm > limite de %.0f cm."
+                                              % (100*_et, 100*a.multi_max_erro))
+                                        print("     *** mantendo a pose de 1 marcador. Confira "
+                                              "as posicoes dos marcadores no cenario.json.")
+                                    else:
+                                        R_wc, t_wc = _mp["R_recinto_from_cam"], _mp["tvec"]
+                                        cam_pos = _mp["cam_pos"]
+                                        mundo, yaw_rec = "recinto", 0.0
+                                        print("     -> ACEITO. mundo = RECINTO (sem passar pelo "
+                                              "frame do marcador).")
+                                        lock_info.update(
+                                            multi_ids=_mp["ids"],
+                                            multi_residuo_px=_mp["residuo_medio_px"],
+                                            multi_erro_trena_m=_et,
+                                            multi_redundante=_mp["redundante"])
+                                elif len(_vis) < 3:
+                                    print("  [MULTI] so %d marcador(es) do cenario visivel(is) "
+                                          "-> mantendo a pose de 1 marcador" % len(_vis))
 
                             # A camera CONSEGUE ver um marcador tao abaixo? Se a geometria
                             # do cenario exige mais inclinacao do que o IMU mediu, algo esta
@@ -1008,7 +1065,7 @@ def main():
                 show_mask = not show_mask
             elif key == ord("r"):
                 locked, samples, grav, rows, rec, tracks = False, [], [], [], False, []
-                yaw_rec = None
+                yaw_rec = None; mundo = "marcador"
                 last_person_d = None
                 print("[reset] re-travando a pose...")
             elif key == 32 and locked:
