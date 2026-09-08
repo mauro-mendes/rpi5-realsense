@@ -847,6 +847,34 @@ def main():
                                               "  ERRO %.0f cm  (%.2f m da origem = %.1f%%)"
                                               % (_mid, _pr[0], _pr[1], _alvo[0], _alvo[1],
                                                  100 * _err, _d0, 100 * _err / max(_d0, 0.01)))
+                                        # ---- o mesmo erro medido SEM PROFUNDIDADE ----
+                                        # ArUco e quase todo PRETO, e preto absorve o IR do
+                                        # projetor: a 5 m, num alvo de ~17 px, a profundidade
+                                        # sobre ele e o pior caso possivel. Aqui projeto a
+                                        # posicao CONHECIDA do marcador com a pose travada e
+                                        # comparo em PIXELS com onde ele foi detectado. Isso
+                                        # isola o erro da POSE do erro do DEPTH.
+                                        _th = np.radians(-yaw_rec)
+                                        _Rz = np.array([[np.cos(_th), -np.sin(_th)],
+                                                        [np.sin(_th), np.cos(_th)]])
+                                        _xy = _Rz @ (_alvo - np.array([_mr["x_m"], _mr["y_m"]]))
+                                        _pm_true = np.array([_xy[0], _xy[1],
+                                                             float(_e.get("z_m", 0.0))])
+                                        _pc_true = R_wc @ _pm_true + t_wc          # -> camera
+                                        if _pc_true[2] > 0.1:
+                                            _u = intr.ppx + intr.fx * _pc_true[0] / _pc_true[2]
+                                            _v = intr.ppy + intr.fy * _pc_true[1] / _pc_true[2]
+                                            _epx = float(np.hypot(_u - _c[0], _v - _c[1]))
+                                            _lat = _epx * _pc_true[2] / intr.fx     # px -> m
+                                            print("           sem depth: projetado (%.0f,%.0f) px "
+                                                  "x detectado (%.0f,%.0f) -> %.1f px = %.0f cm "
+                                                  "lateral" % (_u, _v, _c[0], _c[1], _epx, 100 * _lat))
+                                            # get_distance() devolve o Z (eixo optico), nao a
+                                            # distancia euclidiana -> comparar com _pc_true[2].
+                                            print("           depth lido %.3f m x esperado %.3f m "
+                                                  "-> %+.0f cm  (preto absorve IR; n_px=%d)"
+                                                  % (_dm[0], _pc_true[2],
+                                                     100 * (_dm[0] - _pc_true[2]), _dm[1]))
 
                             # A camera CONSEGUE ver um marcador tao abaixo? Se a geometria
                             # do cenario exige mais inclinacao do que o IMU mediu, algo esta
