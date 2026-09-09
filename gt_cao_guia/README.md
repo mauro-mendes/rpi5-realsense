@@ -12,6 +12,32 @@ que estava errado — incluindo a origem do deslocamento de ~60 cm — está em
 
 ---
 
+## Atualizar no laboratorio
+
+NAO baixe os arquivos por link (raw.githubusercontent, "salvar como"). Ja aconteceu de um
+proxy Varnish devolver uma pagina de erro 503 com status HTTP 200, e o `wget` gravar essa
+pagina POR CIMA do `realsense_gt.py` - o arquivo passa a comecar com `<?xml` e o python
+morre com SyntaxError na linha 1. O git confere o conteudo por SHA e falha alto em vez de
+gravar lixo.
+
+```bash
+# uma vez: pegue o atualizar.sh (ou clone o repo inteiro)
+cd ~/cuscobot_ws/src/utils_package/scripts
+./atualizar.sh
+```
+
+Ele mantem um espelho em `~/.cache/rpi5-realsense`, copia `realsense_gt.py`, `cenario.py` e
+`cenario.json` para a pasta dos scripts (guardando `.bak` dos anteriores), recusa qualquer
+arquivo que comece com `<` ou que nao compile, e no fim roda `--check` para voce conferir que
+o `sha:` mudou.
+
+Se um dia precisar conferir na mao:
+
+```bash
+head -c 22 realsense_gt.py   # tem que ser  #!/usr/bin/env python3
+wc -c realsense_gt.py        # dezenas de KB; uma pagina de erro tem ~600 bytes
+```
+
 ## Instalação: nenhuma
 
 Rode **no mesmo ambiente em que você já roda o script original**. Não instale nada e não
