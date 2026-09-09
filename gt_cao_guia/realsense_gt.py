@@ -860,6 +860,7 @@ def main():
                             print(f"  -> distancia horizontal ate o marcador : {d_h:.3f} m")
                             print(f"  -> ALTURA da camera                    : {cam_pos[2]:+.3f} m")
                             s_scale = None
+                            discordam = False
                             if a.cam_height:
                                 s_scale = abs(cam_pos[2]) / a.cam_height
                                 print(f"  trena altura {a.cam_height:.3f} m -> s = {s_scale:.3f}")
@@ -872,7 +873,8 @@ def main():
                                 # duas medidas do cenario esta errada e a media esconderia isso:
                                 # foi assim que um x do ID 0 errado passou como "OK" (s=0.964
                                 # pela altura x s=0.916 pela distancia).
-                                if s_scale and abs(s_scale - s2) > 0.03:
+                                discordam = bool(s_scale and abs(s_scale - s2) > 0.03)
+                                if discordam:
                                     print(f"  *** as DUAS conferencias DISCORDAM "
                                           f"({s_scale:.3f} pela altura x {s2:.3f} pela "
                                           f"distancia): uma das medidas do cenario.json esta "
@@ -885,7 +887,7 @@ def main():
                                     print(f"  *** ESCALA ERRADA -> rode com "
                                           f"--marker-size {a.marker_size / s_scale:.4f}")
                                     print(f"  *** deslocamento atual de TODA a trajetoria: {desl*100:.0f} cm")
-                                else:
+                                elif not discordam:
                                     print("  OK - escala confere.")
                             else:
                                 print("  >> passe --cam-height (e --cam-dist) p/ conferir a escala!")
