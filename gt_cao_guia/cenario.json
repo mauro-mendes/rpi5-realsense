@@ -45,7 +45,8 @@
       "y_m": 1.83,
       "z_m": 1.27,
       "tamanho_m": 0.144,
-      "_nota": "PENDENTE: medir o lado do quadrado preto. Ainda NAO usado."
+      "_nota": "PENDENTE: medir o lado do quadrado preto. Ainda NAO usado.",
+      "_nota_anomalia": "ATENCAO: le LONGE de forma reprodutivel, 3 passadas seguidas (121815 precisou de escala 1.038 quando os vizinhos precisaram 1.09-1.11; 110948 +28 cm; 113043 +24 cm), sempre com erro LATERAL de so 2 cm. Nao e o mapa: para a leitura estar certa o marcador teria que estar ATRAS da parede. Nao e a bola encostada fora do lugar: segurar a bola adiantada erraria para o outro lado. O depth cru ali le menos curto que nos vizinhos (fator exigido 1.029 a 4,80 m, contra 1.054 a 4,29 m e 1.112 a 5,16 m - nao monotono). CONFERIR o que existe fisicamente na altura do ID 5: superficie diferente, janela, luminaria, ou algo VERDE por perto que desloque o blob da bola."
     },
     "6": {
       "tipo": "parede",
@@ -89,7 +90,8 @@
     "_nota": "LIGADO. d_real = d*(A + B*d), aplicado SO NA BOLA (--depth-pessoa liga p/ a pessoa tambem; default nao, porque a pessoa e o metodo sob teste e o A/B foi calibrado na bola). Calibrado com TRENA LASER da lente ate o marcador, bola encostada nele, trial 121815: ID 0 trena 2,90 leu 2,848 (-2 cm); ID 4 trena 4,60 leu 4,298 (-23 cm); ID 6 trena 5,80 leu 5,263 (-48 cm). Residuo de 1 cm nas 3 ancoras. Conferencia em 3 marcos FORA do ajuste (ID 5/7/8): -18/-57/-46 cm -> +16/-12/-14 cm.",
     "_nota_limites": "Valido de 2,8 a 5,3 m. O codigo tem clamp em 1.0 (nunca encurta): abaixo de 2,69 m a reta cruzaria 1.0 e o sensor ja acerta la. Acima de ~6 m e extrapolacao. As leituras de trena vieram arredondadas em 10 cm - se houver os decimais, refazer o ajuste.",
     "_nota_residuo": "Os +-15 cm que sobram nos marcos de conferencia tem sinal misturado (+16/-12/-14), ou seja sao dispersao (a bola nao encostou exatamente no centro, ruido do estereo em 9 px), nao falha do modelo.",
-    "_nota_validacao": "VALIDADO na passada 110948 (bola 5 s em cada marcador, ja com A/B ligado), reprocessada com a pose corrigida. Erro RADIAL: ID 4 +1 cm (4,51 m), ID 7 -2 cm (5,74 m), ID 6 -9 cm (5,74 m), ID 8 +18 cm (5,12 m), ID 5 +28 cm (4,93 m). Erro LATERAL: 1 a 2 cm em todos. Sinais MISTURADOS -> o que sobra e dispersao da medida da bola (+-4% na escala exigida por marcador), nao vies do modelo; reajustar A/B nesses 5 pontos seria perseguir ruido. Antes do A/B os mesmos marcos davam -23 a -57 cm."
+    "_nota_validacao": "VALIDADO na passada 110948 (bola 5 s em cada marcador, ja com A/B ligado), reprocessada com a pose corrigida. Erro RADIAL: ID 4 +1 cm (4,51 m), ID 7 -2 cm (5,74 m), ID 6 -9 cm (5,74 m), ID 8 +18 cm (5,12 m), ID 5 +28 cm (4,93 m). Erro LATERAL: 1 a 2 cm em todos. Sinais MISTURADOS -> o que sobra e dispersao da medida da bola (+-4% na escala exigida por marcador), nao vies do modelo; reajustar A/B nesses 5 pontos seria perseguir ruido. Antes do A/B os mesmos marcos davam -23 a -57 cm.",
+    "_nota_pessoa": "A correcao vale para a BOLA e para a PESSOA (default). Medido em 572 frames com a bola dentro do bbox da pessoa (passadas 110948 e 113043): sem corrigir a pessoa, o afastamento bola-pessoa cresce +0,25 a +0,29 m por metro de distancia (-4 cm a 2-3,5 m; +77 cm a 5,5-7 m) - braco nao cresce com a distancia. Corrigindo, o afastamento a 4,5-5,5 m cai de 39-46 cm para 7-16 cm e a inclinacao cai para +0,15 a +0,20 m/m. Essa inclinacao residual sugere que a pessoa precisa de UM POUCO MAIS de correcao que a bola, mas se confunde com a postura do braco. --sem-depth-pessoa desliga."
   },
   "bola": {
     "hsv": [

@@ -158,7 +158,8 @@ def centro_da_esfera(p_cam, raio):
     erro de 4 cm. Sem isso, todo o rastreamento fica 7,5 cm deslocado para a camera.
 
     Vale so para a BOLA (esfera de raio conhecido). A pessoa nao e esfera - ali o ponto da
-    superficie do tronco e a convencao, e fica como esta.
+    superficie do tronco e a convencao, e fica como esta. (A correcao de PROFUNDIDADE, essa
+    sim, vale para os dois: ver --sem-depth-pessoa.)
     """
     if raio <= 0:
         return p_cam
@@ -499,12 +500,15 @@ def main():
                     help="faixa plausivel da altura da bola (m). Definida UMA vez p/ o estudo "
                          "inteiro, cobre todos os participantes. Pega bola errada e escala "
                          "grosseiramente errada sem trena por pessoa. Default 1.40 2.10")
-    ap.add_argument("--depth-pessoa", action="store_true",
-                    help="aplica a correcao de profundidade TAMBEM na pessoa. Default NAO: "
-                         "o A/B foi calibrado na BOLA (alvo pequeno, curvo, brilhante, 9 px "
-                         "de raio no fundo da sala). A pessoa e um alvo grande e texturizado, "
-                         "onde o estereo casa muito melhor, e e justamente o METODO SOB TESTE "
-                         "- corrigi-la com a regua da bola contaminaria a comparacao.")
+    ap.add_argument("--sem-depth-pessoa", action="store_true",
+                    help="NAO aplica a correcao de profundidade na pessoa. Por padrao aplica: "
+                         "medido em 572 frames com a bola dentro do bbox da pessoa (passadas "
+                         "110948 e 113043), o afastamento bola-pessoa CRESCE +0,25 a +0,29 m "
+                         "por metro de distancia - braco nao cresce com a distancia, entao a "
+                         "pessoa tem o mesmo vies da bola. Corrigindo, o afastamento a 4,5-5,5 m "
+                         "cai de 39-46 cm para 7-16 cm. Sobra inclinacao de +0,15 a +0,20 m/m: "
+                         "a pessoa parece precisar de um pouco MAIS de correcao que a bola, mas "
+                         "isso se confunde com a postura do braco e nao da p/ separar aqui.")
     ap.add_argument("--model", default="yolov8n.pt")
     ap.add_argument("--conf", type=float, default=0.35)
     ap.add_argument("--every-n", type=int, default=1, help="roda o YOLO a cada N frames")
@@ -1125,7 +1129,7 @@ def main():
                             if pp is None:
                                 continue
                             u, vv, d, npx, std = pp
-                            if a.depth_pessoa:
+                            if not a.sem_depth_pessoa:
                                 d = corrige_depth(d, a.depth_a, a.depth_b)
                             p_cam = np.array(rs.rs2_deproject_pixel_to_point(intr, [u, vv], d))
                             dets.append(to_world(p_cam))
