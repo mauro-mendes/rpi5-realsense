@@ -169,16 +169,27 @@ def centro_da_esfera(p_cam, raio):
 
 
 def corrige_depth(d, A, B):
-    """Corrige a profundidade da RealSense: d_real = d * (A + B*d).
+    """Corrige a profundidade da RealSense: d_real = d * (A + B*d), nunca encurtando.
 
-    A D435 le CURTO e o erro CRESCE com a distancia. Medido neste cenario encostando a bola
-    em marcos de posicao conhecida: erro 0 cm a 2,74 m (ID 0), 21 cm a 4,43 m (ID 4) e
-    16 cm a 4,88 m (ID 5) - quase tudo apontando para a camera, ou seja, radial = depth.
+    A D435 le CURTO sobre a BOLA e o erro cresce com a distancia. CALIBRADO COM TRENA LASER
+    da lente ate o marcador, com a bola encostada nele (trial 121815):
 
-    A=1, B=0 desliga (default). Mesmo modelo afim que ja usamos no rpi5-realsense
-    (tools/calibrate_depth_scale.py), calibrado com trena.
+        ID 0   trena 2,90 m   leu 2,848 m    -2 cm
+        ID 4   trena 4,60 m   leu 4,298 m   -23 cm
+        ID 6   trena 5,80 m   leu 5,263 m   -48 cm
+
+    -> A = 0.9062  B = 0.03484, residuo de 1 cm nas tres ancoras. Conferido em tres marcos
+    que NAO entraram no ajuste (ID 5/7/8): erro de -18/-57/-46 cm cai para +16/-12/-14 cm.
+
+    CLAMP em 1.0: o fator nunca encolhe a distancia. O ajuste e valido de 2,8 a 5,3 m (onde
+    ha ancora); abaixo de 2,69 m a reta cruzaria 1.0 e passaria a ENCURTAR, o que seria
+    extrapolar para uma faixa onde o sensor ja acerta (2 cm de erro na ancora mais proxima).
+    Acima de ~6 m tambem e extrapolacao - nao confie.
+
+    A=1, B=0 desliga.
     """
-    return d * (A + B * d)
+    f = A + B * d
+    return d * f if f > 1.0 else d
 
 
 def le_gravidade(frames):
@@ -487,6 +498,12 @@ def main():
                     help="faixa plausivel da altura da bola (m). Definida UMA vez p/ o estudo "
                          "inteiro, cobre todos os participantes. Pega bola errada e escala "
                          "grosseiramente errada sem trena por pessoa. Default 1.40 2.10")
+    ap.add_argument("--depth-pessoa", action="store_true",
+                    help="aplica a correcao de profundidade TAMBEM na pessoa. Default NAO: "
+                         "o A/B foi calibrado na BOLA (alvo pequeno, curvo, brilhante, 9 px "
+                         "de raio no fundo da sala). A pessoa e um alvo grande e texturizado, "
+                         "onde o estereo casa muito melhor, e e justamente o METODO SOB TESTE "
+                         "- corrigi-la com a regua da bola contaminaria a comparacao.")
     ap.add_argument("--model", default="yolov8n.pt")
     ap.add_argument("--conf", type=float, default=0.35)
     ap.add_argument("--every-n", type=int, default=1, help="roda o YOLO a cada N frames")
@@ -1094,7 +1111,8 @@ def main():
                             if pp is None:
                                 continue
                             u, vv, d, npx, std = pp
-                            d = corrige_depth(d, a.depth_a, a.depth_b)
+                            if a.depth_pessoa:
+                                d = corrige_depth(d, a.depth_a, a.depth_b)
                             p_cam = np.array(rs.rs2_deproject_pixel_to_point(intr, [u, vv], d))
                             dets.append(to_world(p_cam))
                             meta_d.append(dict(p_cam=p_cam, u=u, v=vv, d=d, npx=npx, std=std,

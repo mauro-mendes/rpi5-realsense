@@ -21,12 +21,12 @@
   "marcadores": {
     "0": {
       "tipo": "chao",
-      "x_m": 2.2325,
+      "x_m": 1.998,
       "y_m": 0.45,
       "z_m": 0.0,
       "tamanho_m": 0.135,
       "referencia": true,
-      "_nota": "borda do quadrado preto encostada na parede DIREITA -> centro a 0,0675 dela. x = largura - 0.0675 = 2.30 - 0.0675. ATENCAO: e DERIVADO da largura, nao medido. Com o croqui (2.16) dava 2.088, 14 cm errado."
+      "_nota": "x MEDIDO por trena laser (lente -> marcador = 2,90 m), nao derivado. Historico: croqui dava 2.088, largura do LiDAR dava 2.2325; a trena exige 1.998. O solvePnP nao arbitra isso - mover o x do ID 0 e 93% RADIAL na visada da camera e pixel nao mede distancia radial. CONTRADICAO EM ABERTO: se a borda do marcador encostasse mesmo na parede DIREITA, x seria largura-0,0675; com x=1.998 a largura sairia 2,07, nao 2,30. Ou o marcador nao esta encostado (medir borda -> parede direita), ou a largura de 2,30 esta errada. Nao afeta a trajetoria: os marcos de parede e a camera batem com a trena em 1 cm."
     },
     "4": {
       "tipo": "parede",
@@ -83,9 +83,11 @@
     "_nota": "2,35 m alem da parede DIREITA, 0,40 m abaixo da parede de BAIXO, lente a 1,30 m. ATENCAO - NAO CONFERE: a trena laser ate o ID 0 deu 2,920 m e este mapa da 2,757 m (16 cm CURTO). Os 2,877 m da nota antiga eram com o ID 0 em x=2,088; quando o x subiu para 2,2325 (largura 2,30 do LiDAR) ninguem reconferiu contra a trena. O solvePnP e CEGO a isso: mover o x do ID 0 e 93% RADIAL na visada da camera, entao o residuo de 0,12 px nao valida esse numero. Ou o x do ID 0 e ~2,04 (o que a trena exige), ou o x da camera deveria ter subido junto com a largura (2,16+2,35=4,51 -> 2,30+2,35=4,65). PENDENTE: trena laser da lente ate os IDs 4 e 6 p/ decidir."
   },
   "depth": {
-    "A": 1.0,
-    "B": 0.0,
-    "_nota": "Correcao da profundidade: d_real = d*(A + B*d). A=1/B=0 = DESLIGADO (atual). A D435 le CURTO e o erro cresce com a distancia: medido neste cenario encostando a bola em marcos conhecidos -> 0 cm a 2,74 m, 21 cm a 4,43 m, 16 cm a 4,88 m, quase tudo radial (= depth). Ajuste provisorio com esses 3 pontos: A=0.9640 B=0.01410, que deixaria residuos de +1/-5/+4 cm. NAO ativar com 3 pontos: calibrar com trena em 5-7 distancias (ver ../tools/calibrate_depth_scale.py) antes de confiar."
+    "A": 0.9062,
+    "B": 0.03484,
+    "_nota": "LIGADO. d_real = d*(A + B*d), aplicado SO NA BOLA (--depth-pessoa liga p/ a pessoa tambem; default nao, porque a pessoa e o metodo sob teste e o A/B foi calibrado na bola). Calibrado com TRENA LASER da lente ate o marcador, bola encostada nele, trial 121815: ID 0 trena 2,90 leu 2,848 (-2 cm); ID 4 trena 4,60 leu 4,298 (-23 cm); ID 6 trena 5,80 leu 5,263 (-48 cm). Residuo de 1 cm nas 3 ancoras. Conferencia em 3 marcos FORA do ajuste (ID 5/7/8): -18/-57/-46 cm -> +16/-12/-14 cm.",
+    "_nota_limites": "Valido de 2,8 a 5,3 m. O codigo tem clamp em 1.0 (nunca encurta): abaixo de 2,69 m a reta cruzaria 1.0 e o sensor ja acerta la. Acima de ~6 m e extrapolacao. As leituras de trena vieram arredondadas em 10 cm - se houver os decimais, refazer o ajuste.",
+    "_nota_residuo": "Os +-15 cm que sobram nos marcos de conferencia tem sinal misturado (+16/-12/-14), ou seja sao dispersao (a bola nao encostou exatamente no centro, ruido do estereo em 9 px), nao falha do modelo."
   },
   "bola": {
     "hsv": [
