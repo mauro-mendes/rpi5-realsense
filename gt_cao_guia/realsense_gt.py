@@ -450,6 +450,7 @@ CSV_COLS = ["timestamp_iso", "track_id", "x_world", "y_world", "z_world",
 
 
 def main():
+    _cam_dist_derivada = False
     ap = argparse.ArgumentParser(description="GT RealSense fixa + ArUco travado: bola e/ou pessoa")
     ap.add_argument("--cenario", default=None,
                     help="caminho do cenario.json. Default: ao lado deste script. Util quando "
@@ -551,6 +552,7 @@ def main():
             padroes.update(cam_height=float(cam["z_m"]), level=bool(cam.get("nivelada")))
         if dh:
             padroes.update(cam_dist=round(dh, 4))
+            _cam_dist_derivada = True
         b = cen.get("bola", {})
         if b.get("hsv"):
             padroes["hsv"] = ",".join(str(int(v)) for v in b["hsv"])
@@ -859,7 +861,19 @@ def main():
                                 print(f"  trena altura {a.cam_height:.3f} m -> s = {s_scale:.3f}")
                             if a.cam_dist:
                                 s2 = d_h / a.cam_dist
-                                print(f"  trena distancia {a.cam_dist:.3f} m -> s = {s2:.3f}")
+                                print(f"  distancia ao ref {a.cam_dist:.3f} m -> s = {s2:.3f}"
+                                      + ("  (DERIVADA do cenario.json, nao e trena)"
+                                         if _cam_dist_derivada else ""))
+                                # As duas conferencias tem que CONCORDAR. Se discordam, uma das
+                                # duas medidas do cenario esta errada e a media esconderia isso:
+                                # foi assim que um x do ID 0 errado passou como "OK" (s=0.964
+                                # pela altura x s=0.916 pela distancia).
+                                if s_scale and abs(s_scale - s2) > 0.03:
+                                    print(f"  *** as DUAS conferencias DISCORDAM "
+                                          f"({s_scale:.3f} pela altura x {s2:.3f} pela "
+                                          f"distancia): uma das medidas do cenario.json esta "
+                                          f"errada. A altura e trena direta; a distancia ao "
+                                          f"marcador de referencia costuma ser derivada.")
                                 s_scale = s_scale if s_scale else s2
                             if s_scale:
                                 if abs(s_scale - 1) > 0.05:
