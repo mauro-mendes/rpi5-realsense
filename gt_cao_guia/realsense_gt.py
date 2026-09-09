@@ -146,6 +146,28 @@ def solve_marker_pose(corners, L, K, D):
     return (rvec.reshape(3), tvec.reshape(3)) if ok else None
 
 
+def centro_da_esfera(p_cam, raio):
+    """Leva o ponto medido da SUPERFICIE da bola para o CENTRO dela.
+
+    `depth_median_patch` amostra um patch no centro do blob verde. O raio que a camera
+    devolve ali e o da superficie da FRENTE da esfera, nao o do centro: a leitura sai
+    sistematicamente `raio` metros PERTO DEMAIS, sempre na direcao da camera.
+
+    Medido no cenario do cao-guia: com a bola encostada no ID 0 (trena laser 2,920 m) a
+    leitura crua dava 2,773 m e o centro real estava em 2,885 m. Somando o raio: 2,848 m,
+    erro de 4 cm. Sem isso, todo o rastreamento fica 7,5 cm deslocado para a camera.
+
+    Vale so para a BOLA (esfera de raio conhecido). A pessoa nao e esfera - ali o ponto da
+    superficie do tronco e a convencao, e fica como esta.
+    """
+    if raio <= 0:
+        return p_cam
+    r = float(np.linalg.norm(p_cam))
+    if r < 1e-6:
+        return p_cam
+    return p_cam * ((r + raio) / r)
+
+
 def corrige_depth(d, A, B):
     """Corrige a profundidade da RealSense: d_real = d * (A + B*d).
 
@@ -456,6 +478,10 @@ def main():
                          "necessaria: a escala ja e conferida por --cam-height, que e do "
                          "SETUP e nao muda entre participantes. Use so se quiser cravar a "
                          "conferencia num participante especifico.")
+    ap.add_argument("--ball-diam", type=float, default=0.15,
+                    help="diametro da bola (m), p/ levar a leitura da SUPERFICIE ao CENTRO "
+                         "da esfera. A profundidade e amostrada na frente da bola, entao sem "
+                         "isso tudo fica raio/1 perto demais. 0 desliga. Default 0.15")
     ap.add_argument("--ball-range", type=float, nargs=2, default=[1.40, 2.10],
                     metavar=("MIN", "MAX"),
                     help="faixa plausivel da altura da bola (m). Definida UMA vez p/ o estudo "
@@ -513,6 +539,8 @@ def main():
             padroes["hsv"] = ",".join(str(int(v)) for v in b["hsv"])
         if b.get("faixa_altura_m"):
             padroes["ball_range"] = [float(x) for x in b["faixa_altura_m"]]
+        if b.get("diametro_m"):
+            padroes["ball_diam"] = float(b["diametro_m"])
         dp = cen.get("depth", {})
         if dp.get("A") is not None:
             padroes.update(depth_a=float(dp["A"]), depth_b=float(dp.get("B", 0.0)))
@@ -644,6 +672,7 @@ def main():
                        "max_speed": a.max_speed, "min_hits": a.min_hits, "rate_hz": a.rate,
                        "ball_height_m": a.ball_height, "ball_range_m": list(a.ball_range),
                        "cam_height_m": a.cam_height, "cam_dist_m": a.cam_dist,
+                       "ball_diam_m": a.ball_diam,
                        "depth_A": a.depth_a, "depth_B": a.depth_b},
             "bag": a.bag,
         })
@@ -1031,6 +1060,7 @@ def main():
                             d = corrige_depth(d, a.depth_a, a.depth_b)
                             p_cam = np.array(rs.rs2_deproject_pixel_to_point(
                                 intr, [float(bx), float(by)], d))
+                            p_cam = centro_da_esfera(p_cam, a.ball_diam / 2.0)
                             wpt = to_world(p_cam)
                             lbl = f"bola ({wpt[0]:+.2f},{wpt[1]:+.2f}) z={wpt[2]:+.2f}"
                             cor = (0, 255, 0)
