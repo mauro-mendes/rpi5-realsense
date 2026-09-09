@@ -255,8 +255,10 @@ def plota_plano_svg(rec_, cen, out_svg, titulo="", cmp_=None):
         o.append('<circle cx="%.1f" cy="%.1f" r="8" fill="#b71c1c"/>'
                  % (X(Pb[-1,0]), Y(Pb[-1,1])))
     n_pes = 0
-    for Pp, _ in rec_.get("person", []):           # CADA track na sua linha
-        if track_estatico(Pp):
+    _pes = rec_.get("person", [])
+    _ok, _fp = classifica_tracks(_pes)
+    for _i, (Pp, _) in enumerate(_pes):            # CADA track na sua linha
+        if _i in _fp:
             o.append('<text x="%.1f" y="%.1f" font-size="20" fill="#8d6e63">X</text>'
                      % (X(Pp[:, 0].mean()) - 6, Y(Pp[:, 1].mean()) + 7))
             continue
@@ -290,6 +292,49 @@ def track_estatico(P, limite=0.30):
     return len(P) < 2 or float(np.ptp(P[:, 0])) + float(np.ptp(P[:, 1])) < limite
 
 
+def classifica_tracks(segs, gap_s=3.5, salto_m=0.9):
+    """Separa os tracks PARADOS em 'a pessoa parou' x 'falso-positivo de verdade'.
+
+    `track_estatico` sozinho nao serve para isso. O YOLO perde o track quando a pessoa para
+    de andar e abre um novo no mesmo lugar; esse track novo nao se move e era marcado como
+    falso-positivo. Medido na passada 114810: 7 dos 8 tracks estaticos emendavam com o track
+    anterior em 0,1 a 3,1 s e 0,08 a 0,24 m - era a pessoa parada. Num estudo de cao-guia
+    isso e o pior lugar possivel para jogar dados fora: a pessoa para JUSTAMENTE quando o
+    robo sinaliza obstaculo.
+
+    Regra: quem anda e pessoa. Um track parado que comeca (ou termina) perto no TEMPO e no
+    ESPACO de uma ponta de algum track que ja e da pessoa tambem e da pessoa - e isso se
+    propaga, para cobrir uma parada longa quebrada em varios tracks seguidos. O que sobra
+    (o operador em pe ao lado da camera, um movel) nao encosta em nada e fica de fora.
+
+    `segs` = [(P, t), ...]. Devolve (indices_da_pessoa, indices_falso_positivo).
+    """
+    n = len(segs)
+    if not n:
+        return set(), set()
+    pessoa = {i for i, (P, _) in enumerate(segs) if not track_estatico(P)}
+    if not pessoa:                       # ninguem andou: nao ha como arbitrar, todos valem
+        return set(range(n)), set()
+    pontas = []
+    for P, t in segs:
+        P = np.asarray(P, float); t = np.asarray(t, float)
+        pontas.append(((t[0], P[0, :2]), (t[-1], P[-1, :2])))
+    mudou = True
+    while mudou:
+        mudou = False
+        for i in range(n):
+            if i in pessoa:
+                continue
+            for j in pessoa:
+                for ti, pi in pontas[i]:
+                    for tj, pj in pontas[j]:
+                        if abs(ti - tj) <= gap_s and float(np.linalg.norm(pi - pj)) <= salto_m:
+                            pessoa.add(i); mudou = True; break
+                    if i in pessoa: break
+                if i in pessoa: break
+    return pessoa, set(range(n)) - pessoa
+
+
 def compara_series(series_rec):
     """Distancia da BOLA ate a PESSOA MAIS PROXIMA em cada instante.
 
@@ -305,8 +350,8 @@ def compara_series(series_rec):
     if not b or not p:
         return None
     Pb = np.vstack([s[0] for s in b]); tb = np.concatenate([s[1] for s in b])
-    moveis = [s for s in p if not track_estatico(s[0])]
-    usados = moveis if moveis else p
+    ok, fp = classifica_tracks(p)
+    usados = [p[i] for i in sorted(ok)] or p
     Pp = np.vstack([s[0] for s in usados]); tp = np.concatenate([s[1] for s in usados])
     if len(Pb) < 3 or len(Pp) < 3:
         return None
@@ -319,8 +364,7 @@ def compara_series(series_rec):
         return None
     d = np.array(d)
     return dict(n=len(d), mediana=float(np.median(d)), p90=float(np.percentile(d, 90)),
-                maximo=float(d.max()), n_tracks=len(p),
-                n_estaticos=len(p) - len(moveis))
+                maximo=float(d.max()), n_tracks=len(p), n_estaticos=len(fp))
 
 
 def plota_plano(series, yaw_deg, cen, out_png, titulo="", mundo="marcador"):
@@ -394,11 +438,15 @@ def plota_plano(series, yaw_deg, cen, out_png, titulo="", mundo="marcador"):
     # PESSOA: CADA track_id na sua propria linha. Ligar tracks diferentes desenhava um
     # leque de linhas que nunca existiram.
     n_mov = 0
-    for P, _ in rec_.get("person", []):
-        if track_estatico(P):                 # operador parado, movel: marca e nao liga
+    _lbl_fp = True                            # a legenda do X saia so se o 1o track fosse FP
+    _pes = rec_.get("person", [])
+    _ok, _fp = classifica_tracks(_pes)
+    for _i, (P, _) in enumerate(_pes):
+        if _i in _fp:                         # operador parado, movel: marca e nao liga
             ax.plot(P[:, 0].mean(), P[:, 1].mean(), "X", ms=13, color="#8d6e63",
                     mec="k", mew=1.2, zorder=10,
-                    label="falso-positivo estatico" if n_mov == 0 else None)
+                    label="falso-positivo estatico" if _lbl_fp else None)
+            _lbl_fp = False
         else:
             ax.plot(P[:, 0], P[:, 1], "-o", lw=1.0, ms=3.2, color="#00838f", alpha=0.85,
                     zorder=9, label="pessoa (YOLO bbox)" if n_mov == 0 else None)
