@@ -21,12 +21,13 @@
   "marcadores": {
     "0": {
       "tipo": "chao",
-      "x_m": 1.998,
+      "x_m": 2.2325,
       "y_m": 0.45,
       "z_m": 0.0,
       "tamanho_m": 0.135,
       "referencia": true,
-      "_nota": "x MEDIDO por trena laser (lente -> marcador = 2,90 m), nao derivado. Historico: croqui dava 2.088, largura do LiDAR dava 2.2325; a trena exige 1.998. O solvePnP nao arbitra isso - mover o x do ID 0 e 93% RADIAL na visada da camera e pixel nao mede distancia radial. CONTRADICAO EM ABERTO: se a borda do marcador encostasse mesmo na parede DIREITA, x seria largura-0,0675; com x=1.998 a largura sairia 2,07, nao 2,30. Ou o marcador nao esta encostado (medir borda -> parede direita), ou a largura de 2,30 esta errada. Nao afeta a trajetoria: os marcos de parede e a camera batem com a trena em 1 cm."
+      "_nota": "x = largura - 0.0675 = 2.30 - 0.0675 (borda do quadrado preto encostada na parede DIREITA). E DERIVADO, mas e o valor que o solvePnP escolhe: re-resolvendo a pose com os centros em pixel da passada 110948 -> x=2.2325 da residuo 0.45 px e camera a 11 cm da trena; 1.998 da 1.36 px e 29 cm; 2.088 da 0.87 px e 19 cm; 2.16 da 0.56 px e 14 cm; 2.30 da 0.61 px e 14 cm.",
+      "_nota_trena": "A trena laser deu 2,90 m da lente ate o ID 0 e o mapa da 2,70 - 20 cm que NAO devem ser obedecidos. O ID 0 e alvo de CHAO visto a 27 graus de incidencia rasante: nao da p/ ver onde o ponto vermelho cai sobre o preto do marcador a 2,7 m, e 2 graus de erro de mira jogam o ponto 20 cm alem, no chao depois do marcador. Nos marcadores de PAREDE (alvo frontal) a mesma trena bateu em 1 cm - la ela vale."
     },
     "4": {
       "tipo": "parede",
@@ -87,7 +88,8 @@
     "B": 0.03484,
     "_nota": "LIGADO. d_real = d*(A + B*d), aplicado SO NA BOLA (--depth-pessoa liga p/ a pessoa tambem; default nao, porque a pessoa e o metodo sob teste e o A/B foi calibrado na bola). Calibrado com TRENA LASER da lente ate o marcador, bola encostada nele, trial 121815: ID 0 trena 2,90 leu 2,848 (-2 cm); ID 4 trena 4,60 leu 4,298 (-23 cm); ID 6 trena 5,80 leu 5,263 (-48 cm). Residuo de 1 cm nas 3 ancoras. Conferencia em 3 marcos FORA do ajuste (ID 5/7/8): -18/-57/-46 cm -> +16/-12/-14 cm.",
     "_nota_limites": "Valido de 2,8 a 5,3 m. O codigo tem clamp em 1.0 (nunca encurta): abaixo de 2,69 m a reta cruzaria 1.0 e o sensor ja acerta la. Acima de ~6 m e extrapolacao. As leituras de trena vieram arredondadas em 10 cm - se houver os decimais, refazer o ajuste.",
-    "_nota_residuo": "Os +-15 cm que sobram nos marcos de conferencia tem sinal misturado (+16/-12/-14), ou seja sao dispersao (a bola nao encostou exatamente no centro, ruido do estereo em 9 px), nao falha do modelo."
+    "_nota_residuo": "Os +-15 cm que sobram nos marcos de conferencia tem sinal misturado (+16/-12/-14), ou seja sao dispersao (a bola nao encostou exatamente no centro, ruido do estereo em 9 px), nao falha do modelo.",
+    "_nota_validacao": "VALIDADO na passada 110948 (bola 5 s em cada marcador, ja com A/B ligado), reprocessada com a pose corrigida. Erro RADIAL: ID 4 +1 cm (4,51 m), ID 7 -2 cm (5,74 m), ID 6 -9 cm (5,74 m), ID 8 +18 cm (5,12 m), ID 5 +28 cm (4,93 m). Erro LATERAL: 1 a 2 cm em todos. Sinais MISTURADOS -> o que sobra e dispersao da medida da bola (+-4% na escala exigida por marcador), nao vies do modelo; reajustar A/B nesses 5 pontos seria perseguir ruido. Antes do A/B os mesmos marcos davam -23 a -57 cm."
   },
   "bola": {
     "hsv": [
